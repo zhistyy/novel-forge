@@ -210,7 +210,10 @@ def save_chapter_to_file(state: NovelState, evt_num: int, ch_num: int):
     body_dir = evt_dir / "正文"
     body_dir.mkdir(parents=True, exist_ok=True)
 
-    ch_state = state.events[evt_num].chapters.get(ch_num)
+    evt_state = state.events.get(evt_num)
+    if not evt_state:
+        return
+    ch_state = evt_state.chapters.get(ch_num)
     if not ch_state:
         return
 

@@ -24,19 +24,26 @@ def refine_style(state: NovelState) -> dict:
     if not evt:
         return {"last_error": f"事件{state.current_event} 不存在"}
 
-    ch_num = state.pending_refinement[0]
+    # 用 current_chapter 作为润色目标，与 _get_next_step_type step 7 的条件
+    # （current_ch in pending_refinement）保持一致。
+    # 避免错误恢复后 pending_refinement 队首残留旧条目（如已失败章节）
+    # 导致润色错章或因跨事件找不到章节而报错。
+    ch_num = state.current_chapter
     ch = evt.chapters.get(ch_num)
     if not ch:
-        state.pending_refinement.pop(0)
+        if ch_num in state.pending_refinement:
+            state.pending_refinement.remove(ch_num)
         return {"last_error": f"第{ch_num}章不存在"}
 
     # 人工确认过的章节，永远不重润色
     if ch.status == "human_confirmed":
-        state.pending_refinement.pop(0)
+        if ch_num in state.pending_refinement:
+            state.pending_refinement.remove(ch_num)
         return {}
 
     if ch.refined_content:
-        state.pending_refinement.pop(0)
+        if ch_num in state.pending_refinement:
+            state.pending_refinement.remove(ch_num)
         # 已经人工确认的章节不覆盖状态
         if ch.status != "human_confirmed":
             ch.status = "refined"
@@ -102,7 +109,8 @@ def refine_style(state: NovelState) -> dict:
     # 移到待确认队列（防御性初始化，避免 None.append 崩溃）
     state.pending_human_review = state.pending_human_review or []
     state.pending_human_review.append(ch_num)
-    state.pending_refinement.pop(0)
+    if ch_num in state.pending_refinement:
+        state.pending_refinement.remove(ch_num)
 
     # 同步写回文件
     from novel_agent.utils.file_io import save_chapter_to_file

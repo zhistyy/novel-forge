@@ -188,6 +188,10 @@ class StepEngine:
             if target_exists:
                 self._reset_chapter(target)
                 self.state.current_chapter = target
+                # 立即持久化重置后的章节状态到 DB，避免线程启动前 Flask 崩溃
+                # 导致 load_from_db 恢复旧 refined 状态、modification_hint 失效
+                self._persist_chapter(self.state.current_event, target)
+                self._persist_workflow()
             elif self.steps:
                 # target 无效（如已完成后的兜底）：仅回退一步历史
                 self.steps = self.steps[:-1]
@@ -397,6 +401,10 @@ class StepEngine:
                     # update_entries 修改了条目池，需要持久化条目
                     if self.state and step_type == "update_entries":
                         self._persist_entries()
+                    # 每步都持久化 workflow 状态，保证 Flask 重启后 current_chapter/pending 列表
+                    # 不会落后于实际进度（否则 load_from_db 恢复旧指针，靠递归跳过已完成章节恢复，
+                    # 章节多了递归深度会爆）
+                    self._persist_workflow()
                     # 继续循环跑下一步
                     continue
                 else:
@@ -423,102 +431,114 @@ class StepEngine:
         """
         根据当前状态判断下一步类型。
         以 state.current_chapter 为唯一权威来源，自动跳过已有章节、推进事件。
+
+        用 while 循环代替递归，避免跳过大量已完成章节时栈溢出
+        （如 Flask 重启后从 DB 恢复，current_chapter 落后于实际进度）。
         """
         state = self.state
         if not state:
             return None
 
-        evt = state.events.get(state.current_event)
-        if not evt:
-            return None
+        while True:
+            # 清理 pending_refinement 中已过时的条目（current_chapter 之前的章节）。
+            # 这些通常是错误恢复后残留的：refine 失败 → 用户 modify 跳到后续章节 →
+            # 旧条目留在队列里。不清掉会导致 step 7 条件误判、润色错章或跨事件找不到章节。
+            if state.pending_refinement:
+                cleaned = [ch for ch in state.pending_refinement if ch >= state.current_chapter]
+                if len(cleaned) != len(state.pending_refinement):
+                    state.pending_refinement = cleaned
 
-        # 1. 需要先加载条目？
-        if evt.status != "entries_loaded":
-            return "load_entries"
+            evt = state.events.get(state.current_event)
+            if not evt:
+                return None
 
-        start_ch, end_ch = evt.chapter_range
-        current_ch = state.current_chapter
+            # 1. 需要先加载条目？
+            if evt.status != "entries_loaded":
+                return "load_entries"
 
-        # 2. 当前事件全部写完 → 推进下一事件
-        if end_ch > 0 and current_ch > end_ch:
-            if state.current_event < state.total_events:
-                state.current_event += 1
-                next_evt = state.events.get(state.current_event)
-                if next_evt:
-                    ns, ne = next_evt.chapter_range
-                    state.current_chapter = ns if ns > 0 else current_ch
-                return self._get_next_step_type()
-            else:
-                return None  # 所有事件完成
+            start_ch, end_ch = evt.chapter_range
+            current_ch = state.current_chapter
 
-        # 3. 检查当前章节的写作状态
-        ch = evt.chapters.get(current_ch)
+            # 2. 当前事件全部写完 → 推进下一事件
+            if end_ch > 0 and current_ch > end_ch:
+                if state.current_event < state.total_events:
+                    state.current_event += 1
+                    next_evt = state.events.get(state.current_event)
+                    if next_evt:
+                        ns, ne = next_evt.chapter_range
+                        state.current_chapter = ns if ns > 0 else current_ch
+                    continue  # 重新检查新事件
+                else:
+                    return None  # 所有事件完成
 
-        # 4. 需要规划？
-        # 已有正文且状态为 refined/human_confirmed → 视为已完成的章节，不需要重新规划
-        # （human_confirmed 章节从磁盘加载时 plan 为空，但已完成无需重跑）
-        if ch and ch.content and ch.status in ("refined", "human_confirmed"):
-            pass  # 跳过规划、起草、质检，走到润色/确认或直接完成
-        elif not ch or not ch.plan:
-            return "plan"
+            # 3. 检查当前章节的写作状态
+            ch = evt.chapters.get(current_ch)
 
-        # 5. 需要起草？
-        if not ch.content:
-            return "draft"
+            # 4. 需要规划？
+            # 已有正文且状态为 refined/human_confirmed → 视为已完成的章节，不需要重新规划
+            # （human_confirmed 章节从磁盘加载时 plan 为空，但已完成无需重跑）
+            if ch and ch.content and ch.status in ("refined", "human_confirmed"):
+                pass  # 跳过规划、起草、质检，走到润色/确认或直接完成
+            elif not ch or not ch.plan:
+                return "plan"
 
-        # 6. 需要质检？
-        # 触发条件：status=draft（刚起草）且无 review_feedback
-        # 加 review 次数限制：每章最多重试 2 次，超过就强制通过（避免死循环）
-        # 注意：refined/human_confirmed 状态的章节不再返工（避免已完成的章节被重写）
-        review_count = self._review_counts.get(current_ch, 0)
-        if ch.status == "draft" and not ch.review_feedback:
-            return "review"
-        if (ch.status == "draft" and ch.review_feedback
-                and not _parse_review_verdict(ch.review_feedback)
-                and review_count < 2):
-            # 上次没通过，且未达上限 → 返工起草后重新质检
-            # 清空旧内容让 draft 重写
-            ch.content = ""
-            ch.word_count = 0
-            ch.review_feedback = ""
-            ch.status = "draft"
-            return "draft"
+            # 5. 需要起草？
+            if not ch.content:
+                return "draft"
 
-        # 6.5 需要更新条目池？（review PASS 后、refine 前跑一次）
-        # 触发条件：review 已通过（status=reviewed）+ 还没跑过 update_entries
-        if ch.status == "reviewed" and _parse_review_verdict(ch.review_feedback or ""):
-            if not ch.entries_updated:
-                return "update_entries"
+            # 6. 需要质检？
+            # 触发条件：status=draft（刚起草）且无 review_feedback
+            # 加 review 次数限制：每章最多重试 2 次，超过就强制通过（避免死循环）
+            # 注意：refined/human_confirmed 状态的章节不再返工（避免已完成的章节被重写）
+            review_count = self._review_counts.get(current_ch, 0)
+            if ch.status == "draft" and not ch.review_feedback:
+                return "review"
+            if (ch.status == "draft" and ch.review_feedback
+                    and not _parse_review_verdict(ch.review_feedback)
+                    and review_count < 2):
+                # 上次没通过，且未达上限 → 返工起草后重新质检
+                # 清空旧内容让 draft 重写
+                ch.content = ""
+                ch.word_count = 0
+                ch.review_feedback = ""
+                ch.status = "draft"
+                return "draft"
 
-        # 7. 需要润色？
-        if state.pending_refinement and current_ch in state.pending_refinement:
-            return "refine"
+            # 6.5 需要更新条目池？（review PASS 后、refine 前跑一次）
+            # 触发条件：review 已通过（status=reviewed）+ 还没跑过 update_entries
+            if ch.status == "reviewed" and _parse_review_verdict(ch.review_feedback or ""):
+                if not ch.entries_updated:
+                    return "update_entries"
 
-        # 8. 需要确认？
-        # auto_run 模式下：refined 状态自动确认（写文件 + 标记 human_confirmed），直接推进
-        # 手动模式：refined 状态返回 confirm 让用户确认
-        if ch.status == "refined":
-            if self.auto_run:
-                # 自动确认：写文件 + 改状态
-                ch.status = "human_confirmed"
-                if current_ch in (state.pending_human_review or []):
-                    state.pending_human_review.remove(current_ch)
-                try:
-                    save_chapter_to_file(state, state.current_event, current_ch)
-                except Exception:
-                    pass
-                # 推进到下一章
-                state.current_chapter = current_ch + 1
-                self._review_counts.pop(current_ch, None)
-                return self._get_next_step_type()
-            else:
-                return "confirm"
+            # 7. 需要润色？
+            if state.pending_refinement and current_ch in state.pending_refinement:
+                return "refine"
 
-        # 当前章节已完成 → 推进到下一章
-        state.current_chapter = current_ch + 1
-        # 清掉旧章节的 review 计数避免内存累积
-        self._review_counts.pop(current_ch, None)
-        return self._get_next_step_type()
+            # 8. 需要确认？
+            # auto_run 模式下：refined 状态自动确认（写文件 + 标记 human_confirmed），直接推进
+            # 手动模式：refined 状态返回 confirm 让用户确认
+            if ch.status == "refined":
+                if self.auto_run:
+                    # 自动确认：写文件 + 改状态
+                    ch.status = "human_confirmed"
+                    if current_ch in (state.pending_human_review or []):
+                        state.pending_human_review.remove(current_ch)
+                    try:
+                        save_chapter_to_file(state, state.current_event, current_ch)
+                    except Exception:
+                        pass
+                    # 推进到下一章
+                    state.current_chapter = current_ch + 1
+                    self._review_counts.pop(current_ch, None)
+                    continue  # 重新检查下一章
+                else:
+                    return "confirm"
+
+            # 当前章节已完成 → 推进到下一章
+            state.current_chapter = current_ch + 1
+            # 清掉旧章节的 review 计数避免内存累积
+            self._review_counts.pop(current_ch, None)
+            continue  # 重新检查下一章
 
     def _execute(self, step_type: str) -> dict:
         """实际执行一个步骤"""
@@ -815,10 +835,10 @@ class StepEngine:
 
     def _do_refine(self, state: NovelState) -> dict:
         """文风润色"""
-        # 记住当前要润色的章号
+        # 润色目标：current_chapter（与 _get_next_step_type step 7 条件
+        # `current_ch in pending_refinement` 一致）。不再用 pending_refinement[0]，
+        # 避免错误恢复后队首残留旧条目导致润色错章。
         refine_target = state.current_chapter
-        if state.pending_refinement:
-            refine_target = state.pending_refinement[0]
 
         state_dict = state.to_checkpoint_dict()
         result_dict = _refine_mod.refine_style(state_dict)
@@ -893,6 +913,11 @@ class StepEngine:
                 if ch_num in (self.state.pending_human_review or []):
                     self.state.pending_human_review.remove(ch_num)
                 save_chapter_to_file(self.state, evt_num, ch_num)
+                # 持久化到 DB：章节状态 + pending_human_review 列表。
+                # 若不持久化，Flask 重启后 load_from_db 会用 DB 里的旧状态
+                # （"refined"）覆盖磁盘的 "human_confirmed"，导致用户需要重新确认。
+                self._persist_chapter(evt_num, ch_num)
+                self._persist_workflow()
 
                 # 更新当前步骤
                 if self.steps:
@@ -1112,9 +1137,14 @@ class StepEngine:
                         ch_state.word_count = db_ch.word_count or ch_state.word_count
                         # DB status 比 disk 的 "human_confirmed" 默认值更准确
                         ch_state.status = db_ch.status or ch_state.status
-                        # entries_updated 不在 DB 里，保留磁盘值（默认 False）
+                        # entries_updated 不在 DB 里：按 status 推断。
+                        # refined/human_confirmed 必然已跑过 update_entries（它是 refine 的前置步骤）；
+                        # reviewed 可能跑过也可能没跑过，保守设 False（最多幂等重跑一次）。
+                        if ch_state.status in ("refined", "human_confirmed"):
+                            ch_state.entries_updated = True
                     else:
                         # 磁盘没有（draft/review 阶段）：从 DB 创建
+                        _status = db_ch.status or "draft"
                         ch_state = ChapterState(
                             chapter_num=db_ch.num,
                             content=db_ch.content or "",
@@ -1122,7 +1152,8 @@ class StepEngine:
                             review_feedback=db_ch.review_feedback or "",
                             plan=db_ch.plan or "",
                             word_count=db_ch.word_count or 0,
-                            status=db_ch.status or "draft",
+                            status=_status,
+                            entries_updated=_status in ("refined", "human_confirmed"),
                         )
                         evt_state.chapters[db_ch.num] = ch_state
         except Exception:

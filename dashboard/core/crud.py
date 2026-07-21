@@ -75,8 +75,10 @@ def update_project(pid: int, **kwargs) -> Optional[ProjectDB]:
 
 def delete_project(pid: int) -> bool:
     with transaction() as conn:
-        conn.execute("DELETE FROM projects WHERE id=?", (pid,))
-        return conn.total_changes > 0
+        # 不能用 conn.total_changes：它是连接级累计值，本线程之前有任何成功操作就 >0。
+        # 用 cur.rowcount 获取本条 DELETE 实际影响的行数。
+        cur = conn.execute("DELETE FROM projects WHERE id=?", (pid,))
+        return cur.rowcount > 0
 
 
 # ════════════════════════════════════════════
@@ -123,12 +125,16 @@ def get_chapter(eid: int, num: int) -> Optional[ChapterDB]:
 
 def create_chapter(eid: int, num: int, plan="", status="pending") -> ChapterDB:
     with transaction() as conn:
+        # INSERT OR IGNORE：row 已存在时不报错。用 cur.rowcount 判断是否真的插入：
+        # rowcount=1 表示新插入，rowcount=0 表示被 IGNORE（已存在）。
+        # 不能用 cur.lastrowid is None：lastrowid 在 IGNORE 时是上一条成功 INSERT 的 rowid
+        # （或初始值），并非 None，判断不可靠。
         cur = conn.execute(
             "INSERT OR IGNORE INTO chapters (event_id,num,plan,status) VALUES (?,?,?,?)",
             (eid, num, plan, status),
         )
-        if cur.lastrowid is None:
-            # 已存在，更新
+        if cur.rowcount == 0:
+            # 已存在，更新 plan 和 status
             conn.execute("UPDATE chapters SET plan=?,status=? WHERE event_id=? AND num=?",
                         (plan, status, eid, num))
     return get_chapter(eid, num)
@@ -148,8 +154,8 @@ def update_chapter(ch_id: int, **kwargs) -> Optional[ChapterDB]:
 
 def delete_chapter(eid: int, num: int) -> bool:
     with transaction() as conn:
-        conn.execute("DELETE FROM chapters WHERE event_id=? AND num=?", (eid, num))
-        return conn.total_changes > 0
+        cur = conn.execute("DELETE FROM chapters WHERE event_id=? AND num=?", (eid, num))
+        return cur.rowcount > 0
 
 
 # ════════════════════════════════════════════
@@ -202,8 +208,8 @@ def update_entry(pid: int, name: str, **kwargs) -> Optional[EntryDB]:
 
 def delete_entry(pid: int, name: str) -> bool:
     with transaction() as conn:
-        conn.execute("DELETE FROM entries WHERE project_id=? AND name=?", (pid, name))
-        return conn.total_changes > 0
+        cur = conn.execute("DELETE FROM entries WHERE project_id=? AND name=?", (pid, name))
+        return cur.rowcount > 0
 
 
 def upsert_entry(pid: int, name: str, category: str, one_line: str = "",
@@ -220,7 +226,8 @@ def upsert_entry(pid: int, name: str, category: str, one_line: str = "",
             "appears_in": appears_in,
         }
         updates.update(extra)
-        set_clause = ", ".join(f"{k}=?" for k in updates)
+        # updated_at 用 SQL 函数设值，避免传 None 导致字段变 NULL（DEFAULT 仅 INSERT 时生效）
+        set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
         values = list(updates.values())
         with transaction() as conn:
             conn.execute(
@@ -283,14 +290,14 @@ def create_prompt(name: str, role: str, system_text: str,
 
 def update_prompt_text(prompt_id: int, system_text: str) -> bool:
     with transaction() as conn:
-        conn.execute("UPDATE prompts SET system_text=?,updated_at=None WHERE id=?",
+        cur = conn.execute("UPDATE prompts SET system_text=?,updated_at=datetime('now','localtime') WHERE id=?",
                     (system_text, prompt_id))
-        return conn.total_changes > 0
+        return cur.rowcount > 0
 
 def deactivate_prompt(name: str) -> bool:
     with transaction() as conn:
-        conn.execute("UPDATE prompts SET is_active=0 WHERE name=?", (name,))
-        return conn.total_changes > 0
+        cur = conn.execute("UPDATE prompts SET is_active=0 WHERE name=?", (name,))
+        return cur.rowcount > 0
 
 def render_prompt(name: str, **vars) -> str:
     """渲染提示词模板：用传入变量替换 {var} 占位符"""
@@ -323,13 +330,14 @@ def upsert_workflow(pid: int, **kwargs) -> WorkflowDB:
     for key in ("pending_review","pending_refine","pending_confirm"):
         if key in updates and isinstance(updates[key], (list, tuple)):
             updates[key] = json.dumps(updates[key], ensure_ascii=False)
-    updates["updated_at"] = None
-    set_clause = ", ".join(f"{k}=?" for k in updates)
+    set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
     values = list(updates.values())
     with transaction() as conn:
+        # 先确保 row 存在。不能用 conn.total_changes 判断 UPDATE 是否命中：
+        # total_changes 是连接级累计值，只要本连接之前有过任何 INSERT/UPDATE 成功就 >0，
+        # 会导致 row 不存在时 INSERT 分支永远不触发（imported 项目工作流状态丢失）。
+        conn.execute("INSERT OR IGNORE INTO workflow (project_id) VALUES (?)", (pid,))
         conn.execute(f"UPDATE workflow SET {set_clause} WHERE project_id=?", (*values, pid))
-        if conn.total_changes == 0:
-            conn.execute("INSERT INTO workflow (project_id) VALUES (?)", (pid,))
     return get_workflow(pid)
 
 
@@ -374,7 +382,9 @@ def import_project_from_fs(project_name: str) -> Optional[int]:
             conn.commit()
             db_evt = get_event(pid, evt_num)
         if db_evt:
-            update_event(db_evt.id, plan=evt.plan or "", status=evt.status)
+            update_event(db_evt.id, plan=evt.plan or "", status=evt.status,
+                         ch_range_start=evt.chapter_range[0],
+                         ch_range_end=evt.chapter_range[1])
             # 导入章节
             for ch_num, ch in evt.chapters.items():
                 create_chapter(db_evt.id, ch_num,

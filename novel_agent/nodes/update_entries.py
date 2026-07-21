@@ -81,7 +81,9 @@ _SYSTEM_PROMPT = """角色：条目池维护员
 
 def _build_user_prompt(state: NovelState, ch_num: int) -> str:
     """构建 user_prompt：本章正文 + 现有条目池摘要 + 当前事件名"""
-    evt = state.events[state.current_event]
+    evt = state.events.get(state.current_event)
+    if not evt:
+        return ""
     event_name = f"事件{state.current_event}"
     ch = evt.chapters.get(ch_num)
     content = (ch.content or "").strip() if ch else ""
@@ -219,7 +221,9 @@ def update_entries_after_chapter(state_dict: dict) -> dict:
     """扫描本章正文，更新条目池。"""
     state: NovelState = state_dict  # type: ignore
     ch_num = state.current_chapter
-    evt = state.events[state.current_event]
+    evt = state.events.get(state.current_event)
+    if not evt:
+        return {"last_error": f"事件{state.current_event} 不存在", "entry_updates": {}}
     ch = evt.chapters.get(ch_num)
     if not ch or not ch.content:
         return {"last_error": "本章无正文，跳过条目更新", "entry_updates": {}}

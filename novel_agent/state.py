@@ -279,4 +279,10 @@ class NovelState:
 
         d["entries"] = pool
         d["events"] = events
+        # 过滤掉 NovelState 不认识的字段（如 node_wrapper merge 进来的
+        # entry_updates / llm_output / last_error 等节点返回值），
+        # 避免 cls(**d) 因意外关键字参数 TypeError
+        import dataclasses as _dc
+        valid_keys = {f.name for f in _dc.fields(cls)}
+        d = {k: v for k, v in d.items() if k in valid_keys}
         return cls(**d)
