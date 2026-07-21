@@ -121,6 +121,9 @@ class StepEngine:
         self.status = "running"
         self.error = ""
         self._review_counts = {}  # 重置 review 计数
+        # 重置 modification_hint，避免上一轮的修改意见污染新一轮
+        if self.state:
+            self.state.modification_hint = ""
 
         # 执行第一步（同步或异步取决于 auto_run）
         if auto_run:
@@ -134,6 +137,8 @@ class StepEngine:
             return {"error": "引擎不在暂停状态"}
         self.status = "running"
         self._modification = ""
+        # continue_ 不清 modification_hint：用户在 confirm 暂停时可能
+        # 想带着意见继续，只有 refine 后或新一轮 start 才清空
         if self.auto_run:
             self._launch_thread()
             return {"status": "running"}
@@ -155,26 +160,40 @@ class StepEngine:
         # 如果正在 running，先 stop
         if self.status == "running":
             self._stop_requested = True
-            self._wait_thread_and_clear()
+            try:
+                self._wait_thread_and_clear()
+            except RuntimeError as e:
+                return {"error": str(e)}
             # 此时线程已退出，status 应为 paused
             if self.status == "running":
                 return {"error": "等待引擎停止超时，请稍后再试"}
 
         # 现在 status 应该是 paused/completed/error/idle，都可以接管
-        self._wait_thread_and_clear()
+        try:
+            self._wait_thread_and_clear()
+        except RuntimeError as e:
+            return {"error": str(e)}
 
         # 把意见注入到 state，节点会读取
         self.state.modification_hint = instruction.strip()
         self._modification = instruction.strip()
 
         # 回退到目标章节：清空该章的产出，让 _get_next_step_type 重新走 plan→draft→review→refine
-        if target_chapter > 0:
-            self._reset_chapter(target_chapter)
-            self.state.current_chapter = target_chapter
-        else:
-            # 默认回退最后一步，重新执行
-            if self.steps:
+        # 未指定 target_chapter 时，默认回退到 current_chapter（避免章节已是 refined 状态被跳过，
+        # 导致用户意见不生效）
+        target = target_chapter if target_chapter > 0 else (self.state.current_chapter if self.state else 0)
+        if target > 0:
+            # 校验 target 是有效章节；无效则不重置（避免 completed 后误调用）
+            target_exists = any(target in evt.chapters for evt in self.state.events.values())
+            if target_exists:
+                self._reset_chapter(target)
+                self.state.current_chapter = target
+            elif self.steps:
+                # target 无效（如已完成后的兜底）：仅回退一步历史
                 self.steps = self.steps[:-1]
+                self.current_index = len(self.steps)
+        elif self.steps:
+            self.steps = self.steps[:-1]
             self.current_index = len(self.steps)
 
         self._stop_requested = False
@@ -217,33 +236,49 @@ class StepEngine:
             self.error = f"线程异常: {e}"
 
     def _wait_thread_and_clear(self):
-        """等待已有线程结束（用于 start/modify 前清理）"""
+        """等待已有线程结束（用于 start/modify 前清理）。
+        超时后抛异常，避免双线程竞态。
+        """
         with self._thread_lock:
             t = self._engine_thread
         if t and t.is_alive():
             # 最多等 120 秒（LLM 调用最长 ~60s，加余量）
             t.join(timeout=120)
+            if t.is_alive():
+                raise RuntimeError("引擎线程未在 120s 内停止，可能有 LLM 调用卡住")
         with self._thread_lock:
             self._engine_thread = None
 
-    def _reset_chapter(self, ch_num: int):
-        """清空指定章节的产出，让工作流重新生成"""
+    def _reset_chapter(self, ch_num: int) -> bool:
+        """清空指定章节的产出，让工作流重新生成（含 plan，让用户意见能影响规划阶段）。
+
+        同时把 current_event 切到该章所属事件，避免跨事件重跑时找错事件。
+        返回 True 表示找到并重置了章节，False 表示未找到。
+        """
         if not self.state:
-            return
-        for evt in self.state.events.values():
+            return False
+        for evt_num, evt in self.state.events.items():
             if ch_num in evt.chapters:
                 ch = evt.chapters[ch_num]
+                ch.plan = ""  # 清空规划，让 plan_chapter 重新生成（注入 modification_hint）
                 ch.content = ""
                 ch.refined_content = ""
                 ch.review_feedback = ""
                 ch.word_count = 0
                 ch.status = "draft"
+                ch.entries_updated = False  # 重置条目更新标记，让 update_entries 重新跑
+                # 清掉该章的 review 计数，让重试次数重新开始
+                self._review_counts.pop(ch_num, None)
                 # 从待确认/待润色队列里移除
                 if ch_num in (self.state.pending_human_review or []):
                     self.state.pending_human_review.remove(ch_num)
                 if ch_num in (self.state.pending_refinement or []):
                     self.state.pending_refinement.remove(ch_num)
-                break
+                # 切到该章所属事件（跨事件重跑时必须更新，否则 _get_next_step_type
+                # 会去 current_event 里找章节，找不到就误判为完成）
+                self.state.current_event = evt_num
+                return True
+        return False
 
     def get_state(self) -> dict:
         """获取完整状态（前端轮询用）"""
@@ -349,8 +384,9 @@ class StepEngine:
                             self._persist_workflow()
                         return self.get_state()
                     step.status = "completed"
-                    # 意见用完一次就清空，避免影响后续章节
-                    if step_type in ("draft", "refine") and self.state:
+                    # 意见仅在 refine 后清空（plan/draft/refine 都需要读取用户意见）
+                    # 在 draft 后清空会导致 refine 拿不到意见
+                    if step_type == "refine" and self.state:
                         self.state.modification_hint = ""
                     # 持久化到数据库
                     if self.state and step_type == "load_entries":
@@ -419,8 +455,9 @@ class StepEngine:
         ch = evt.chapters.get(current_ch)
 
         # 4. 需要规划？
-        # 已有正文且状态为 refined → 视为已完成的章节，不需要重新规划
-        if ch and ch.content and ch.status == "refined":
+        # 已有正文且状态为 refined/human_confirmed → 视为已完成的章节，不需要重新规划
+        # （human_confirmed 章节从磁盘加载时 plan 为空，但已完成无需重跑）
+        if ch and ch.content and ch.status in ("refined", "human_confirmed"):
             pass  # 跳过规划、起草、质检，走到润色/确认或直接完成
         elif not ch or not ch.plan:
             return "plan"
@@ -432,10 +469,13 @@ class StepEngine:
         # 6. 需要质检？
         # 触发条件：status=draft（刚起草）且无 review_feedback
         # 加 review 次数限制：每章最多重试 2 次，超过就强制通过（避免死循环）
+        # 注意：refined/human_confirmed 状态的章节不再返工（避免已完成的章节被重写）
         review_count = self._review_counts.get(current_ch, 0)
         if ch.status == "draft" and not ch.review_feedback:
             return "review"
-        if ch.review_feedback and not _parse_review_verdict(ch.review_feedback) and review_count < 2:
+        if (ch.status == "draft" and ch.review_feedback
+                and not _parse_review_verdict(ch.review_feedback)
+                and review_count < 2):
             # 上次没通过，且未达上限 → 返工起草后重新质检
             # 清空旧内容让 draft 重写
             ch.content = ""
@@ -455,8 +495,24 @@ class StepEngine:
             return "refine"
 
         # 8. 需要确认？
-        if ch.status not in ("refined", "human_confirmed"):
-            return "confirm"
+        # auto_run 模式下：refined 状态自动确认（写文件 + 标记 human_confirmed），直接推进
+        # 手动模式：refined 状态返回 confirm 让用户确认
+        if ch.status == "refined":
+            if self.auto_run:
+                # 自动确认：写文件 + 改状态
+                ch.status = "human_confirmed"
+                if current_ch in (state.pending_human_review or []):
+                    state.pending_human_review.remove(current_ch)
+                try:
+                    save_chapter_to_file(state, state.current_event, current_ch)
+                except Exception:
+                    pass
+                # 推进到下一章
+                state.current_chapter = current_ch + 1
+                self._review_counts.pop(current_ch, None)
+                return self._get_next_step_type()
+            else:
+                return "confirm"
 
         # 当前章节已完成 → 推进到下一章
         state.current_chapter = current_ch + 1
@@ -499,6 +555,18 @@ class StepEngine:
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
 
+        # 节点返回错误（如事件纲生成失败）→ 整个步骤失败
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+        if last_error:
+            return {
+                "error": last_error,
+                "summary": f"❌ {last_error}",
+                "preview": last_error,
+                "detail": last_error,
+                "meta": {"event": state.current_event},
+                "actions": ["modify"],
+            }
+
         evt = state.events.get(state.current_event)
         entries = state.entries.get_entries_for_event(f"事件{state.current_event}") if evt else []
 
@@ -517,15 +585,18 @@ class StepEngine:
             and "（待填写）" not in plan_after
         )
 
-        # 调试输出（持久化失败时排查用）
+        # 调试输出（持久化失败时排查用，仅记录到 step.summary 不影响引擎状态）
+        plan_gen_warning = ""
         if plan_after_len < 100:
-            self.error = f"事件{state.current_event}纲生成失败: before={plan_before_len} after={plan_after_len}"
+            plan_gen_warning = f"⚠ 事件纲生成可能失败（长度={plan_after_len}），请检查 LLM 输出"
 
         parts = []
         if plan_generated:
             parts.append("✓ 事件纲已生成")
         elif plan_ready:
             parts.append("✓ 事件纲已就绪")
+        if plan_gen_warning:
+            parts.append(plan_gen_warning)
         parts.append(f"{len(entries)}个条目已加载" if entries else "无关联条目")
         summary = " · ".join(parts)
 
@@ -558,6 +629,18 @@ class StepEngine:
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
 
+        # 节点可能返回 last_error（如事件不存在）
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+        if last_error:
+            return {
+                "error": last_error,
+                "summary": f"❌ {last_error}",
+                "preview": last_error,
+                "detail": last_error,
+                "meta": {"chapter_num": state.current_chapter, "event": state.current_event},
+                "actions": ["modify"],
+            }
+
         evt = state.events.get(state.current_event)
         ch = evt.chapters.get(state.current_chapter) if evt else None
         plan_text = ch.plan if ch else ""
@@ -581,6 +664,18 @@ class StepEngine:
         new_state = NovelState.from_checkpoint_dict(result_dict)
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
+
+        # 节点可能返回 last_error（如事件不存在、章节未规划）
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+        if last_error:
+            return {
+                "error": last_error,
+                "summary": f"❌ {last_error}",
+                "preview": last_error,
+                "detail": last_error,
+                "meta": {"chapter_num": state.current_chapter, "event": state.current_event},
+                "actions": ["modify"],
+            }
 
         evt = state.events.get(state.current_event)
         ch = evt.chapters.get(state.current_chapter) if evt else None
@@ -610,23 +705,49 @@ class StepEngine:
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
 
+        # 节点可能返回 last_error（如事件不存在、没有可质检的章节）
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+        if last_error:
+            return {
+                "error": last_error,
+                "summary": f"❌ {last_error}",
+                "preview": last_error,
+                "detail": last_error,
+                "meta": {"chapter_num": state.current_chapter, "review_count": self._review_counts.get(ch_num, 0)},
+                "actions": ["modify"],
+            }
+
         evt = state.events.get(state.current_event)
         ch = evt.chapters.get(state.current_chapter) if evt else None
         feedback = ch.review_feedback if ch else ""
         passed = _parse_review_verdict(feedback) if feedback else False
         review_count = self._review_counts.get(ch_num, 0)
 
-        # 强制通过条件：达到重试上限或字数已达标
+        # 强制通过条件：达到重试上限
         forced_pass = False
         if not passed and review_count >= 2:
             forced_pass = True
             passed = True
+            # 改写 review_feedback 开头为 PASS，让 _get_next_step_type 的 update_entries 条件能通过
+            if ch:
+                if feedback:
+                    ch.review_feedback = (
+                        f"PASS（强制：已达重试上限{review_count}次）\n\n"
+                        f"--- 原始 FAIL 反馈 ---\n{feedback}"
+                    )
+                else:
+                    # feedback 为空（review 节点未写入反馈）：写入默认 PASS 反馈
+                    ch.review_feedback = (
+                        f"PASS（强制：已达重试上限{review_count}次，原始反馈为空）"
+                    )
 
         summary = "✅ 质检通过" if passed else f"❌ 质检未通过（第{review_count}次，上限2次）"
         if forced_pass:
             summary = f"⚠ 质检未通过但已达重试上限({review_count}次)，强制进入润色"
-        preview = feedback[:500] if feedback else "(无反馈)"
-        detail = feedback if feedback else "(无)"
+        # preview 和 detail 都用最终的 review_feedback（forced_pass 时已改写为 PASS 开头）
+        final_feedback = ch.review_feedback if ch else (feedback or "")
+        preview = final_feedback[:500] if final_feedback else "(无反馈)"
+        detail = final_feedback if final_feedback else "(无)"
 
         if passed:
             # 标记为已审查，准备润色
@@ -654,7 +775,12 @@ class StepEngine:
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
 
-        # 标记本章已跑过 update_entries
+        # 节点可能返回 last_error（如"本章无正文"或"review 未通过"）
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+
+        # 标记本章已跑过 update_entries。
+        # 无论成功还是跳过（last_error）都标记 True，避免 _get_next_step_type 死循环重试。
+        # "review 未通过"的情况 status 还是 draft，根本不会进入 update_entries 分支，所以不影响。
         evt = state.events.get(state.current_event)
         ch = evt.chapters.get(ch_num) if evt else None
         if ch:
@@ -665,9 +791,14 @@ class StepEngine:
         upd_n = stats.get("existing_entries_updated", 0) if isinstance(stats, dict) else 0
         skipped_n = len(stats.get("skipped", [])) if isinstance(stats, dict) else 0
 
-        summary = f"新增 {new_n} 条 / 更新 {upd_n} 条 / 跳过 {skipped_n} 条"
-        preview = (result_dict.get("llm_output", "") if isinstance(result_dict, dict) else "")[:500]
-        detail = json.dumps(stats, ensure_ascii=False, indent=2) if stats else "(无变更)"
+        if last_error:
+            summary = f"⚠ 跳过条目更新：{last_error}"
+            preview = last_error
+            detail = last_error
+        else:
+            summary = f"新增 {new_n} 条 / 更新 {upd_n} 条 / 跳过 {skipped_n} 条"
+            preview = (result_dict.get("llm_output", "") if isinstance(result_dict, dict) else "")[:500]
+            detail = json.dumps(stats, ensure_ascii=False, indent=2) if stats else "(无变更)"
 
         return {
             "summary": summary,
@@ -695,6 +826,18 @@ class StepEngine:
         new_state = _ensure_dataclass_state(new_state)
         state.__dict__.update(new_state.__dict__)
 
+        # 节点可能返回 last_error（如事件不存在、章节不存在）
+        last_error = result_dict.get("last_error", "") if isinstance(result_dict, dict) else ""
+        if last_error:
+            return {
+                "error": last_error,
+                "summary": f"❌ {last_error}",
+                "preview": last_error,
+                "detail": last_error,
+                "meta": {"chapter_num": refine_target},
+                "actions": ["modify"],
+            }
+
         evt = state.events.get(state.current_event)
         refined_ch = evt.chapters.get(refine_target) if evt else None
         refined_text = refined_ch.refined_content if refined_ch else ""
@@ -704,13 +847,7 @@ class StepEngine:
         preview = refined_text[:500] if refined_text else "(无变化)"
         detail = refined_text if refined_text else "(无)"
 
-        # 标记为待确认
-        if refined_ch:
-            refined_ch.status = "refined"
-            state.pending_human_review = state.pending_human_review or []
-            if refine_target not in state.pending_human_review:
-                state.pending_human_review.append(refine_target)
-
+        # 注：refine_style 节点内部已处理 status="refined" 和 pending_human_review append
         return {
             "summary": summary,
             "preview": preview,
@@ -743,9 +880,14 @@ class StepEngine:
         """确认章节（由前端 step/confirm API 调用）"""
         if not self.state:
             return {"error": "状态未初始化"}
+        # 统一转 int（前端可能传字符串，pending 列表里存的是 int）
+        try:
+            ch_num = int(ch_num)
+        except (TypeError, ValueError):
+            return {"error": f"非法章号: {ch_num}"}
 
         for evt_num, evt in self.state.events.items():
-            ch = evt.chapters.get(int(ch_num))
+            ch = evt.chapters.get(ch_num)
             if ch:
                 ch.status = "human_confirmed"
                 if ch_num in (self.state.pending_human_review or []):
@@ -788,9 +930,16 @@ class StepEngine:
             if not db_ch:
                 crud.create_chapter(db_evt.id, ch_num, plan=ch.plan or "", status=ch.status or "pending")
             # 更新所有字段
-            word_count = len(re.findall(r"[\u4e00-\u9fff]", ch.content or "")) if ch.content else (
-                len(re.findall(r"[\u4e00-\u9fff]", ch.refined_content or "")) if ch.refined_content else 0
-            )
+            # word_count 优先用节点已设置的 ch.word_count（refine_style 会设润色稿字数）；
+            # 没有时才重新计算。避免用初稿字数覆盖润色稿字数。
+            if ch.word_count > 0:
+                word_count = ch.word_count
+            elif ch.refined_content:
+                word_count = len(re.findall(r"[\u4e00-\u9fff]", ch.refined_content))
+            elif ch.content:
+                word_count = len(re.findall(r"[\u4e00-\u9fff]", ch.content))
+            else:
+                word_count = 0
             crud.update_chapter_by_event(
                 db_evt.id, ch_num,
                 plan=ch.plan or "",
@@ -867,7 +1016,13 @@ class StepEngine:
                     except Exception:
                         pass
                     # 2. 数据库 upsert
+                    # appears_in 必须存 JSON 字符串（app.py 读取时用 json.loads 解析）。
+                    # 早期版本用逗号分隔，会与 json.loads 不兼容，导致条目详情接口 500。
                     try:
+                        appears_in_json = json.dumps(
+                            entry.appears_in if isinstance(entry.appears_in, list) else list(entry.appears_in or []),
+                            ensure_ascii=False,
+                        )
                         crud.upsert_entry(
                             project_id=proj.id,
                             name=entry.name,
@@ -875,7 +1030,7 @@ class StepEngine:
                             one_line=entry.one_line,
                             content=entry.content,
                             version=entry.version,
-                            appears_in=",".join(entry.appears_in),
+                            appears_in=appears_in_json,
                         )
                     except Exception:
                         pass
@@ -916,6 +1071,7 @@ class StepEngine:
         返回 {"success": bool, "status": str, "message": str}
         """
         from dashboard.core import crud
+        from novel_agent.state import ChapterState
         import json as _json
         proj = crud.get_project_by_name(project)
         if not proj:
@@ -924,17 +1080,70 @@ class StepEngine:
         if not wf or wf.status == "idle":
             return {"success": False, "message": "工作流未启动过"}
 
-        # 加载项目到 state
+        # 加载项目到 state（从磁盘读取，已 refine/confirm 的章节会被加载）
         self.project = project
         self.state = load_project_to_state(project)
         if not self.state:
             return {"success": False, "message": "加载项目失败"}
 
+        # 从 DB 覆盖章节状态（磁盘只在 refine/confirm 时写盘，draft/review 阶段
+        # 的内容只在 DB 里。不覆盖会丢失进行中的章节）
+        try:
+            db_events = crud.get_events_for_project(proj.id)
+            for db_evt in db_events:
+                evt_state = self.state.events.get(db_evt.num)
+                if not evt_state:
+                    continue
+                # 从 DB 恢复 chapter_range（磁盘加载可能因事件纲缺失而为 (0,0)，
+                # 导致 _get_next_step_type 无法推进事件）
+                if db_evt.ch_range_start and db_evt.ch_range_end:
+                    evt_state.chapter_range = (db_evt.ch_range_start, db_evt.ch_range_end)
+                # 同步事件 plan（DB 可能比磁盘更新，如 load_entries 刚生成事件纲）
+                if db_evt.plan and not evt_state.plan:
+                    evt_state.plan = db_evt.plan
+                for db_ch in crud.get_chapters_for_event(db_evt.id):
+                    ch_state = evt_state.chapters.get(db_ch.num)
+                    if ch_state:
+                        # 磁盘已加载：用 DB 字段覆盖（DB 是最新的）
+                        ch_state.plan = db_ch.plan or ch_state.plan
+                        ch_state.content = db_ch.content or ch_state.content
+                        ch_state.refined_content = db_ch.refined_content or ch_state.refined_content
+                        ch_state.review_feedback = db_ch.review_feedback or ch_state.review_feedback
+                        ch_state.word_count = db_ch.word_count or ch_state.word_count
+                        # DB status 比 disk 的 "human_confirmed" 默认值更准确
+                        ch_state.status = db_ch.status or ch_state.status
+                        # entries_updated 不在 DB 里，保留磁盘值（默认 False）
+                    else:
+                        # 磁盘没有（draft/review 阶段）：从 DB 创建
+                        ch_state = ChapterState(
+                            chapter_num=db_ch.num,
+                            content=db_ch.content or "",
+                            refined_content=db_ch.refined_content or "",
+                            review_feedback=db_ch.review_feedback or "",
+                            plan=db_ch.plan or "",
+                            word_count=db_ch.word_count or 0,
+                            status=db_ch.status or "draft",
+                        )
+                        evt_state.chapters[db_ch.num] = ch_state
+        except Exception:
+            pass
+
         # 从 workflow 表恢复指针
         self.state.current_event = wf.current_event or 1
         self.state.current_chapter = wf.current_chapter or 1
-        self.state.pending_human_review = _json.loads(wf.pending_review or "[]")
-        self.state.pending_refinement = _json.loads(wf.pending_refine or "[]")
+        # pending_review/pending_refine 可能是 JSON、空串或旧格式；容错解析
+        def _safe_load_list(val):
+            if not val:
+                return []
+            if isinstance(val, list):
+                return val
+            try:
+                parsed = _json.loads(val)
+                return parsed if isinstance(parsed, list) else []
+            except (ValueError, TypeError):
+                return []
+        self.state.pending_human_review = _safe_load_list(wf.pending_review)
+        self.state.pending_refinement = _safe_load_list(wf.pending_refine)
 
         # 从 extra 恢复易失状态
         try:

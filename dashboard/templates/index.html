@@ -715,7 +715,7 @@ async function loadProjects() {
   const detailed = await Promise.all(projects.map(p => fetch(`/api/project/${p.name}`).then(r => r.json()).catch(() => null)));
   grid.innerHTML = detailed.filter(Boolean).map(p => {
     const total = p.total_chapters || 0;
-    const written = p.chapter_counter || 0;
+    const written = p.written_chapters || 0;
     const pct = total ? Math.min(100, Math.round(written / total * 100)) : 0;
     const updated = p.updated_at || '';
     const tone = p.tone || '';
@@ -767,7 +767,7 @@ function renderProjectDetail() {
   apiPill.textContent = p.has_api_key ? 'DS 已连接' : 'DS 未连接';
 
   const total = p.total_chapters || 0;
-  const written = p.chapter_counter || 0;
+  const written = p.written_chapters || 0;
   const pct = total ? Math.min(100, Math.round(written / total * 100)) : 0;
 
   // 引擎状态：未启动/运行中/暂停/已完成/出错
@@ -1431,6 +1431,15 @@ async function readerSave(confirm) {
     const data = await res.json();
     if (data.error) { toast(data.error, 'err'); return; }
     readerCh.isEditing = false;
+    // 更新章节状态和字数（保存并锁定后 status 变为 human_confirmed，需显示解锁按钮）
+    if (data.status) readerCh.status = data.status;
+    if (data.word_count !== undefined) {
+      // 更新 meta 显示
+      const stTxt = data.status === 'human_confirmed' ? '🔒 已锁定' : data.status === 'refined' ? '已润色' : data.status || '空';
+      document.getElementById('readerChapMeta').textContent =
+        document.getElementById('readerChapMeta').textContent.replace(/· \d+字/, `· ${data.word_count}字`).replace(/· 状态：.+$/, `· 状态：${stTxt}`);
+    }
+    document.getElementById('readerUnlockBtn').style.display = (readerCh.status === 'human_confirmed') ? '' : 'none';
     readerRenderContent();
     toast(confirm ? '已保存并锁定，工作流不会再覆盖' : '已保存', 'cyan');
     // 刷新侧栏状态
@@ -1480,19 +1489,23 @@ async function pollEngine() {
     const data = await res.json();
     const changed = JSON.stringify(data) !== JSON.stringify(engineState);
     const wasRunning = engineState?.status === 'running';
+    const oldStepCount = engineState?.steps?.length || 0;
+    const oldLastStepStatus = engineState?.steps?.[oldStepCount-1]?.status || '';
     engineState = data;
     // 如果工作流视图打开，更新
     if (document.getElementById('view-workflow').classList.contains('active')) {
       renderWorkflow();
-      // 同时刷新项目详情缓存（如果 reader 打开需要侧栏更新）
-      if (changed && currentProjectName === data.project && data.status !== 'running') {
-        // 状态变化时拉取项目详情（更新侧栏的章节状态）
-        try {
-          const detailRes = await fetch(`/api/project/${currentProjectName}`);
-          currentProject = await detailRes.json();
-          if (readerCh) renderReaderSidebar(readerCh.ch_num);
-        } catch(e) {}
-      }
+    }
+    // reader 视图打开时，工作流状态变化（完成/中断）就刷新侧栏
+    const readerOpen = document.getElementById('view-reader').classList.contains('active');
+    if (readerOpen && changed && currentProjectName === data.project &&
+        (data.status === 'completed' || data.status === 'paused' || data.status === 'error' ||
+         wasRunning !== (data.status === 'running'))) {
+      try {
+        const detailRes = await fetch(`/api/project/${currentProjectName}`);
+        currentProject = await detailRes.json();
+        if (readerCh) renderReaderSidebar(readerCh.ch_num);
+      } catch(e) {}
     }
     // 如果项目详情打开，且状态变化，刷新
     if (changed && document.getElementById('view-detail').classList.contains('active') && currentProjectName === data.project) {
@@ -1501,8 +1514,19 @@ async function pollEngine() {
         loadProjectDetail(currentProjectName);
       }
     }
-    // 自适应间隔：running 时 800ms，其他状态 2500ms
-    const nextDelay = (data.status === 'running') ? 800 : 2500;
+    // 自适应间隔：
+    // - running 且步骤在推进：800ms（实时看到变化）
+    // - running 但步骤没变（LLM 调用中）：1500ms（降低无效请求）
+    // - 其他状态：2500ms
+    let nextDelay;
+    if (data.status === 'running') {
+      const newStepCount = data.steps?.length || 0;
+      const newLastStepStatus = data.steps?.[newStepCount-1]?.status || '';
+      const stepProgressing = (newStepCount !== oldStepCount) || (newLastStepStatus !== oldLastStepStatus);
+      nextDelay = stepProgressing ? 800 : 1500;
+    } else {
+      nextDelay = 2500;
+    }
     schedulePoll(nextDelay);
   } catch(e) {
     schedulePoll(2000);  // 出错时 2s 后重试

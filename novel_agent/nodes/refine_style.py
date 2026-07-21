@@ -99,7 +99,8 @@ def refine_style(state: NovelState) -> dict:
     ch.word_count = refined_wc
     ch.status = "refined"
 
-    # 移到待确认队列
+    # 移到待确认队列（防御性初始化，避免 None.append 崩溃）
+    state.pending_human_review = state.pending_human_review or []
     state.pending_human_review.append(ch_num)
     state.pending_refinement.pop(0)
 

@@ -244,7 +244,7 @@ class NovelState:
             pool = entries_data
         elif isinstance(entries_data, dict):
             pool = EntryPool()
-            for cat in ["人物设定", "概念设定", "势力设定", "其他设定"]:
+            for cat in ENTRY_CATEGORIES:
                 cat_data = entries_data.get(cat, {})
                 if isinstance(cat_data, dict):
                     pool.__dict__[cat] = {
@@ -270,6 +270,11 @@ class NovelState:
                         chapters[int(ck)] = ChapterState(**cv)
                 v = dict(v)
                 v["chapters"] = chapters
+                # chapter_range 经 asdict 序列化后变成 list，转回 tuple
+                # 避免 == (0, 0) 等比较因类型不一致而失败
+                cr = v.get("chapter_range")
+                if isinstance(cr, list):
+                    v["chapter_range"] = tuple(cr)
                 events[int(k)] = EventState(**v)
 
         d["entries"] = pool

@@ -10,16 +10,16 @@ from __future__ import annotations
 import functools
 from typing import Callable, Any
 
-from novel_agent.state import NovelState, EntryPool, EntryState, EventState, ChapterState
+from novel_agent.state import NovelState, EntryPool, EntryState, EventState, ChapterState, ENTRY_CATEGORIES
 
 
 def _ensure_dataclass_state(state: NovelState) -> NovelState:
     """确保 state 内的嵌套 dict 都被转回 dataclass 对象"""
-    # 1. 修复 entries: dict → EntryPool
+    # 1. 修复 entries: dict → EntryPool（全 6 分类）
     if isinstance(state.entries, dict):
         pool = EntryPool()
         entries_dict = state.entries
-        for cat in ["人物设定", "概念设定", "势力设定", "其他设定"]:
+        for cat in ENTRY_CATEGORIES:
             cat_data = entries_dict.get(cat, {})
             if isinstance(cat_data, dict):
                 pool.__dict__[cat] = {
@@ -36,6 +36,10 @@ def _ensure_dataclass_state(state: NovelState) -> NovelState:
                 if isinstance(ch_val, dict):
                     ch_dict[ch_key] = ChapterState(**ch_val)
             evt_val["chapters"] = ch_dict
+            # chapter_range 经序列化可能变成 list，转回 tuple 保持类型一致
+            cr = evt_val.get("chapter_range")
+            if isinstance(cr, list):
+                evt_val["chapter_range"] = tuple(cr)
             state.events[evt_key] = EventState(**evt_val)
     return state
 

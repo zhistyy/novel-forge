@@ -20,6 +20,33 @@ from novel_agent.state import NovelState, EntryState, EventState
 _TEMPLATE_MARKERS = ["（待填写）", "待规划"]
 
 
+def _update_event_chapter_range(state: NovelState, evt: EventState):
+    """从事件纲正文解析 chapter_range；解析失败时用 total_chapters/total_events 兜底。
+
+    避免 chapter_range=(0,0) 导致 _get_next_step_type 无法推进事件。
+    """
+    import re as _re
+    plan_content = evt.plan or ""
+    # 优先匹配"## 章节规划（第X-Y章）"标题内的范围，避免误匹配概述里"承接第1-2章"等
+    m = _re.search(r"章节规划\s*[（(]\s*第\s*(\d+)\s*-\s*(\d+)\s*章\s*[）)]", plan_content)
+    if m:
+        evt.chapter_range = (int(m.group(1)), int(m.group(2)))
+        return
+    # 回退：匹配任意"第X-Y章"，取最后一个（章节规划通常在文档后部）
+    matches = _re.findall(r"第\s*(\d+)\s*-\s*(\d+)\s*章", plan_content)
+    if matches:
+        evt.chapter_range = (int(matches[-1][0]), int(matches[-1][1]))
+        return
+    # 兜底：按 total_chapters / total_events 均匀分配（最后一个事件吸收余数）
+    total_e = state.total_events or 1
+    total_c = state.total_chapters or 0
+    cpe = max(1, total_c // total_e) if total_e > 0 else total_c
+    i = evt.event_num
+    start = (i - 1) * cpe + 1
+    end = total_c if i == total_e else i * cpe
+    evt.chapter_range = (start, end)
+
+
 def _is_template_plan(plan: str) -> bool:
     """检测事件纲是否是初始模板"""
     if not plan or not plan.strip():
@@ -115,6 +142,17 @@ def load_entries_for_event(state: NovelState) -> dict:
                 new_plan = f"# 事件{state.current_event}\n\n{new_plan}"
             evt.plan = new_plan
             evt.status = "planned"
+            # 解析 chapter_range（LLM 生成的事件纲可能不含"第X-Y章"格式，
+            # 不设置会导致 _get_next_step_type 无法推进事件）
+            _update_event_chapter_range(state, evt)
+        else:
+            # 生成失败：返回错误，让 step_engine 决定是否重试
+            return {"last_error": f"事件{state.current_event}纲生成失败，LLM 返回为空或异常"}
+    else:
+        # 事件纲已就绪：确保 chapter_range 已正确解析（磁盘加载时已解析，
+        # 但如果是从 DB 恢复或早期创建的事件，可能还是 (0,0)）
+        if evt.chapter_range == (0, 0):
+            _update_event_chapter_range(state, evt)
 
     # ── 加载条目 ──
     loaded = state.entries.get_entries_for_event(event_name)

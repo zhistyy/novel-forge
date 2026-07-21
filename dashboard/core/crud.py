@@ -66,8 +66,8 @@ def update_project(pid: int, **kwargs) -> Optional[ProjectDB]:
     updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     if not updates:
         return get_project_by_id(pid)
-    updates["updated_at"] = None  # 触发 DEFAULT
-    set_clause = ", ".join(f"{k}=?" for k in updates)
+    # updated_at 直接用 SQL 函数设值，避免传 None 导致字段变 NULL（DEFAULT 仅 INSERT 时生效）
+    set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
     values = list(updates.values())
     with transaction() as conn:
         conn.execute(f"UPDATE projects SET {set_clause} WHERE id=?", (*values, pid))
@@ -98,8 +98,7 @@ def update_event(eid: int, **kwargs) -> Optional[EventDB]:
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         return None
-    updates["updated_at"] = None
-    set_clause = ", ".join(f"{k}=?" for k in updates)
+    set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
     values = list(updates.values())
     with transaction() as conn:
         conn.execute(f"UPDATE events SET {set_clause} WHERE id=?", (*values, eid))
@@ -139,8 +138,7 @@ def update_chapter(ch_id: int, **kwargs) -> Optional[ChapterDB]:
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         return None
-    updates["updated_at"] = None
-    set_clause = ", ".join(f"{k}=?" for k in updates)
+    set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
     values = list(updates.values())
     with transaction() as conn:
         conn.execute(f"UPDATE chapters SET {set_clause} WHERE id=?", (*values, ch_id))
@@ -196,8 +194,7 @@ def update_entry(pid: int, name: str, **kwargs) -> Optional[EntryDB]:
         return get_entry(pid, name)
     if "appears_in" in updates and isinstance(updates["appears_in"], (list, tuple)):
         updates["appears_in"] = json.dumps(updates["appears_in"], ensure_ascii=False)
-    updates["updated_at"] = None
-    set_clause = ", ".join(f"{k}=?" for k in updates)
+    set_clause = ", ".join(f"{k}=?" for k in updates) + ", updated_at=datetime('now','localtime')"
     values = list(updates.values())
     with transaction() as conn:
         conn.execute(f"UPDATE entries SET {set_clause} WHERE project_id=? AND name=?", (*values, pid, name))
@@ -232,9 +229,15 @@ def upsert_entry(pid: int, name: str, category: str, one_line: str = "",
             )
         return get_entry(pid, name)
     else:
+        # appears_in 已是 JSON 字符串，传给 create_entry 时需先反序列化为 list
+        try:
+            appears_list = json.loads(appears_in) if isinstance(appears_in, str) else (appears_in or [])
+        except (json.JSONDecodeError, TypeError):
+            appears_list = []
         return create_entry(
             pid, name, category,
             one_line=one_line, content=content,
+            appears_in=appears_list, version=version,
         )
 
 
@@ -383,14 +386,14 @@ def import_project_from_fs(project_name: str) -> Optional[int]:
                                       word_count=ch.word_count,
                                       status=ch.status)
 
-    # 导入条目
-    for cat in ["人物设定", "概念设定", "势力设定", "其他设定"]:
+    # 导入条目（全 6 分类）
+    from novel_agent.state import ENTRY_CATEGORIES
+    for cat in ENTRY_CATEGORIES:
         pool = getattr(state.entries, cat, {})
         for name, entry in pool.items():
-            appears_in = json.dumps(entry.appears_in or [], ensure_ascii=False)
             create_entry(pid, name, cat, one_line=entry.one_line,
                        content=entry.content, version=entry.version,
-                       appears_in=entry.appears_in)
+                       appears_in=entry.appears_in or [])
 
     # 工作流
     upsert_workflow(pid, current_event=state.current_event,

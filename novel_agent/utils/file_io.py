@@ -162,9 +162,22 @@ def load_project_to_state(project_name: str) -> NovelState:
         if plan_content:
             evt_state.plan = plan_content
             evt_state.status = "planned"
-            m = re.search(r"(\d+)-(\d+)章?", plan_content)
+            # 章节范围正则：优先匹配"## 章节规划（第X-Y章）"标题，避免误匹配概述里的"承接第1-2章"
+            m = re.search(r"章节规划\s*[（(]\s*第\s*(\d+)\s*-\s*(\d+)\s*章\s*[）)]", plan_content)
             if m:
                 evt_state.chapter_range = (int(m.group(1)), int(m.group(2)))
+            else:
+                # 回退：取最后一个"第X-Y章"匹配（章节规划通常在文档后部）
+                all_matches = re.findall(r"第\s*(\d+)\s*-\s*(\d+)\s*章", plan_content)
+                if all_matches:
+                    evt_state.chapter_range = (int(all_matches[-1][0]), int(all_matches[-1][1]))
+            if evt_state.chapter_range == (0, 0):
+                # 兜底：从 total_chapters / total_events 推算（避免 chapter_range=(0,0)
+                # 导致 _get_next_step_type 无法推进事件）
+                _cpe = max(1, state.total_chapters // state.total_events) if state.total_events > 0 else state.total_chapters
+                _start = (i - 1) * _cpe + 1
+                _end = state.total_chapters if i == state.total_events else i * _cpe
+                evt_state.chapter_range = (_start, _end)
 
         # 已有的正文
         body_dir = evt_dir / "正文"

@@ -51,6 +51,51 @@ def _add_log(kind: str, msg: str, detail: str = ""):
             _log_buf[:] = _log_buf[-100:]
 
 
+def _safe_json_loads(val, default=None):
+    """容错解析 JSON 字符串。用于解析 DB 中可能为 None / 空串 / 旧格式（逗号分隔）的字段。
+    - None / 空串 → default
+    - list / dict → 原样返回
+    - 合法 JSON 字符串 → 解析结果
+    - 旧格式逗号分隔字符串 → 拆分成 list
+    - 解析失败 → default
+    """
+    if default is None:
+        default = []
+    if val is None:
+        return default
+    if isinstance(val, (list, dict)):
+        return val
+    if not isinstance(val, str):
+        return default
+    s = val.strip()
+    if not s:
+        return default
+    # JSON 格式优先
+    if s.startswith("[") or s.startswith("{"):
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, ValueError):
+            return default
+    # 旧格式：逗号分隔字符串 → list
+    if "," in s:
+        return [x.strip() for x in s.split(",") if x.strip()]
+    return [s]
+
+
+def _safe_int(val, default: int = 0) -> int:
+    """容错转 int：前端可能传字符串、null 或非数字值。"""
+    if val is None:
+        return default
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val)
+    try:
+        return int(str(val).strip())
+    except (ValueError, TypeError):
+        return default
+
+
 # ── 启动初始化 ──
 
 def _startup():
@@ -125,6 +170,10 @@ def api_project_detail(name: str):
 
     events = get_events_for_project(proj.id)
     events_data = []
+    # 一次遍历收集所有统计，避免每个事件的章节被查询三次
+    total_words = 0
+    written_chapters = 0
+    total_chapters = 0
     for evt in events:
         chapters = get_chapters_for_event(evt.id)
         ch_data = []
@@ -134,7 +183,11 @@ def api_project_detail(name: str):
                 "has_plan": bool(ch.plan), "has_content": bool(ch.content),
                 "has_refined": bool(ch.refined_content),
             })
+            total_words += ch.word_count
+            if ch.status in ("refined", "human_confirmed"):
+                written_chapters += 1
         total = evt.ch_range_end - evt.ch_range_start + 1
+        total_chapters += total
         written = sum(1 for c in chapters if c.status in ("refined", "human_confirmed"))
         events_data.append({
             "num": evt.num, "name": f"事件{evt.num}", "status": evt.status,
@@ -154,10 +207,6 @@ def api_project_detail(name: str):
             "name": e.name, "version": e.version, "one_line": e.one_line,
         })
 
-    total_words = sum(
-        c.word_count for evt in events
-        for c in get_chapters_for_event(evt.id)
-    )
     wf = get_workflow(proj.id)
 
     return jsonify({
@@ -165,11 +214,16 @@ def api_project_detail(name: str):
         "status": wf.status if wf else "idle",
         "current_event": wf.current_event if wf else 1,
         "chapter_counter": wf.current_chapter if wf else 1,
+        "written_chapters": written_chapters,
+        "total_chapters": total_chapters,
         "total_events": len(events),
         "total_words": total_words,
+        "words_per_chapter": proj.words_per_chapter or 1000,
+        "tone": proj.tone or "",
+        "updated_at": proj.updated_at or "",
         "events": events_data, "entries": entries_data,
-        "pending_human_review": json.loads(wf.pending_confirm) if wf and isinstance(wf.pending_confirm, str) else (wf.pending_confirm if wf else []),
-        "pending_refinement": json.loads(wf.pending_refine) if wf and isinstance(wf.pending_refine, str) else (wf.pending_refine if wf else []),
+        "pending_human_review": _safe_json_loads(wf.pending_review) if wf else [],
+        "pending_refinement": _safe_json_loads(wf.pending_refine) if wf else [],
         "has_api_key": bool(LLM_API_KEY),
     })
 
@@ -204,7 +258,8 @@ def _project_state_to_json(name: str, state):
             "chapters": chapters,
         })
     entries_data = {}
-    for cat in ["人物设定", "概念设定", "势力设定", "其他设定"]:
+    from novel_agent.state import ENTRY_CATEGORIES
+    for cat in ENTRY_CATEGORIES:
         pool = getattr(state.entries, cat, {})
         if pool:
             entries_data[cat] = [
@@ -288,7 +343,7 @@ def api_step_modify():
     """针对性重跑：基于用户意见 + 可选目标章节"""
     data = request.get_json() or {}
     instruction = data.get("instruction", "")
-    target_chapter = int(data.get("target_chapter") or 0)
+    target_chapter = _safe_int(data.get("target_chapter"), 0)
     if not instruction.strip():
         return jsonify({"error": "需要填写修改意见"}), 400
     _add_log("engine", f"针对性重跑: {instruction[:50]} (target_ch={target_chapter})")
@@ -347,9 +402,13 @@ def api_project_create_and_start():
     genre = (data.get("genre") or "").strip()
     tone = (data.get("tone") or "").strip()
     plot = (data.get("plot") or "").strip()
-    total_events = int(data.get("total_events") or 3)
-    total_chapters = int(data.get("total_chapters") or (total_events * 3))
-    words_per_chapter = int(data.get("words_per_chapter") or 1000)
+    total_events = _safe_int(data.get("total_events"), 3)
+    total_chapters = _safe_int(data.get("total_chapters"), total_events * 3)
+    words_per_chapter = _safe_int(data.get("words_per_chapter"), 1000)
+    # 保护下限，避免传 0 或负数
+    if total_events < 1: total_events = 1
+    if total_chapters < 1: total_chapters = total_events * 3
+    if words_per_chapter < 100: words_per_chapter = 1000
     auto_run = data.get("auto_run", True)
 
     if not name:
@@ -424,12 +483,19 @@ def api_project_delete(name: str):
             shutil.rmtree(root)
         except Exception as e:
             return jsonify({"error": f"删除文件失败: {e}"}), 500
-    # 如果引擎在跑这个项目，停止
+    # 如果引擎在跑这个项目，停止并彻底清理
     if _engine.project == name:
         _engine.stop()
+        # 等线程真正退出，避免线程在退出前把 status 改回 "paused" 覆盖 "idle"
+        try:
+            _engine._wait_thread_and_clear()
+        except RuntimeError:
+            pass  # 线程卡在 LLM 调用，120s 内未退出，强制清理
         _engine.project = ""
         _engine.steps = []
         _engine.status = "idle"
+        _engine.state = None  # 清空 state，避免后续 modify 等调用误用已删除项目的内存状态
+        _engine._review_counts = {}
     _add_log("project", f"删除项目 {name}")
     return jsonify({"success": True})
 
@@ -477,12 +543,21 @@ def api_chapter_edit(name: str, ch_num: int):
         ch = get_chapter(evt.id, ch_num)
         if ch:
             from dashboard.core import crud
-            # 计算字数（中文字符数）
-            word_count = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
-            update_kwargs = {field: text, "word_count": word_count}
+            # 仅在编辑正文类字段时才更新 word_count，避免编辑 plan/review_feedback
+            # 时把字数错误地设为该字段字数
+            is_content_field = field in ("refined_content", "content")
+            if is_content_field:
+                word_count = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
+            else:
+                word_count = ch.word_count
+            update_kwargs = {field: text}
+            if is_content_field:
+                update_kwargs["word_count"] = word_count
             # 编辑润色稿或原始稿时，如果用户选择 confirm，标记为已人工确认
-            if confirm and field in ("refined_content", "content"):
-                update_kwargs["status"] = "human_confirmed"
+            is_confirm_field = field in ("refined_content", "content")
+            new_status = "human_confirmed" if (confirm and is_confirm_field) else ch.status
+            if confirm and is_confirm_field:
+                update_kwargs["status"] = new_status
             crud.update_chapter_by_event(evt.id, ch_num, **update_kwargs)
             # 同步到 engine 内存（如果引擎在跑这个项目）
             if _engine.state and _engine.project == name:
@@ -490,18 +565,20 @@ def api_chapter_edit(name: str, ch_num: int):
                 if eng_evt and eng_evt.chapters.get(ch_num):
                     eng_ch = eng_evt.chapters[ch_num]
                     setattr(eng_ch, field, text)
-                    eng_ch.word_count = word_count
-                    if confirm and field in ("refined_content", "content"):
+                    if is_content_field:
+                        eng_ch.word_count = word_count
+                    if confirm and is_confirm_field:
                         eng_ch.status = "human_confirmed"
                         # 从待确认队列移除
-                        if ch_num in (eng_evt.chapters and _engine.state.pending_human_review or []):
-                            _engine.state.pending_human_review.remove(ch_num)
+                        pending = _engine.state.pending_human_review or []
+                        if ch_num in pending:
+                            pending.remove(ch_num)
             _add_log("chapter", f"编辑 {name} 第{ch_num}章 {field}" +
                      ("（已确认）" if confirm else ""), name)
             return jsonify({
                 "success": True, "chapter": ch_num, "field": field,
                 "word_count": word_count,
-                "status": "human_confirmed" if (confirm and field in ("refined_content", "content")) else ch.status,
+                "status": new_status,
             })
     return jsonify({"error": f"第{ch_num}章不存在"}), 404
 
@@ -525,7 +602,7 @@ def api_entries(name: str):
             "name": entry.name, "category": entry.category,
             "one_line": entry.one_line, "content": entry.content,
             "version": entry.version,
-            "appears_in": json.loads(entry.appears_in) if isinstance(entry.appears_in, str) else entry.appears_in,
+            "appears_in": _safe_json_loads(entry.appears_in),
         })
 
     elif request.method == "POST":
@@ -535,12 +612,16 @@ def api_entries(name: str):
                            content=data.get("content", ""),
                            appears_in=data.get("appears_in", []),
                            version=1)
+        if not entry:
+            return jsonify({"error": "创建条目失败"}), 500
         _add_log("db", f"创建条目: {name}")
         return jsonify({"success": True, "name": entry.name, "version": entry.version})
 
     elif request.method == "PUT":
         data = request.get_json() or {}
         entry = update_entry(proj.id, name, **data)
+        if not entry:
+            return jsonify({"error": "条目不存在或更新失败"}), 404
         _add_log("db", f"更新条目: {name}")
         return jsonify({"success": True, "name": entry.name, "version": entry.version})
 
@@ -564,7 +645,7 @@ def api_list_entries():
         {
             "name": e.name, "category": e.category,
             "one_line": e.one_line, "version": e.version,
-            "appears_in": json.loads(e.appears_in) if isinstance(e.appears_in, str) else e.appears_in,
+            "appears_in": _safe_json_loads(e.appears_in),
         }
         for e in entries
     ])
@@ -582,9 +663,12 @@ def ai_refine():
         return jsonify({"error": "未配置 API Key", "mock": True, "output": text}), 200
     system = "你是一个专业的小说润色师。请优化以下文本的文学表现力，保持情节和人物不变。"
     if style: system += f"\n\n作者风格参考：\n{style[:500]}"
-    result = call_llm(system, f"请润色以下正文：\n\n{text}", temperature=0.6, max_tokens=8192)
-    return jsonify({"output": result["output"], "tokens_in": result.get("tokens_in", 0),
-                    "tokens_out": result.get("tokens_out", 0), "duration_ms": result.get("duration_ms", 0)})
+    try:
+        result = call_llm(system, f"请润色以下正文：\n\n{text}", temperature=0.6, max_tokens=8192)
+        return jsonify({"output": result["output"], "tokens_in": result.get("tokens_in", 0),
+                        "tokens_out": result.get("tokens_out", 0), "duration_ms": result.get("duration_ms", 0)})
+    except Exception as e:
+        return jsonify({"error": f"LLM 调用失败: {e}"}), 500
 
 
 # ── API: 日志 ──

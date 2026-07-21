@@ -30,12 +30,12 @@ def call_llm(
 ) -> dict:
     """
     调用 LLM，返回 {"output": str, "tokens_in": int, "tokens_out": int, "duration_ms": int}
+
+    失败时抛 RuntimeError，由调用方（step_engine 的 try-except）捕获并标记步骤 error。
+    避免把"LLM 调用失败"的提示文本当成正文写入章节。
     """
     if not API_KEY:
-        return {
-            "output": f"（模拟输出 — 未配置 API_KEY，请在 .env 中设置 DEEPSEEK_API_KEY）\n\n【System】\n{system_prompt[:200]}...\n\n【User】\n{user_prompt[:200]}...",
-            "tokens_in": 0, "tokens_out": 0, "duration_ms": 0,
-        }
+        raise RuntimeError("未配置 DEEPSEEK_API_KEY，请在 .env 中设置")
 
     import requests
 
@@ -56,29 +56,23 @@ def call_llm(
     }
 
     t0 = time.time()
-    try:
-        resp = requests.post(
-            f"{API_BASE}/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=REQUEST_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    resp = requests.post(
+        f"{API_BASE}/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
-        output = data["choices"][0]["message"]["content"]
-        usage = data.get("usage", {})
-        return {
-            "output": output,
-            "tokens_in": usage.get("prompt_tokens", 0),
-            "tokens_out": usage.get("completion_tokens", 0),
-            "duration_ms": int((time.time() - t0) * 1000),
-        }
-    except Exception as e:
-        return {
-            "output": f"（LLM 调用失败: {e}）",
-            "tokens_in": 0, "tokens_out": 0, "duration_ms": int((time.time() - t0) * 1000),
-        }
+    output = data["choices"][0]["message"]["content"]
+    usage = data.get("usage", {})
+    return {
+        "output": output,
+        "tokens_in": usage.get("prompt_tokens", 0),
+        "tokens_out": usage.get("completion_tokens", 0),
+        "duration_ms": int((time.time() - t0) * 1000),
+    }
 
 
 def call_llm_with_messages(
