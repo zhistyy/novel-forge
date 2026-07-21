@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FORGE · 小说工坊</title>
+<style>
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-0:#000000;
+  --bg-1:#080808;
+  --bg-2:#0e0e0e;
+  --glass:rgba(255,255,255,0.025);
+  --glass-strong:rgba(255,255,255,0.055);
+  --glass-border:rgba(255,255,255,0.08);
+  --glass-border-strong:rgba(255,255,255,0.18);
+  --text:#f0f0f0;
+  --text-dim:rgba(240,240,240,0.5);
+  --text-faint:rgba(240,240,240,0.28);
+  --green:#00ff88;
+  --green-glow:rgba(0,255,136,0.5);
+  --green-soft:rgba(0,255,136,0.12);
+  --amber:#ffb020;
+  --red:#ff3355;
+  --grad:linear-gradient(135deg,#00ff88 0%,#00cc70 100%);
+  --shadow-card:0 8px 32px rgba(0,0,0,0.5);
+  --shadow-hover:0 16px 48px rgba(0,0,0,0.6),0 0 24px rgba(0,255,136,0.2);
+}
+html,body{height:100%;font-family:"SF Pro Display","Inter","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.5;color:var(--text);
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 0%,rgba(255,255,255,0.025) 0%,transparent 50%),
+    radial-gradient(ellipse 80% 60% at 80% 100%,rgba(255,255,255,0.015) 0%,transparent 50%),
+    linear-gradient(180deg,var(--bg-0) 0%,var(--bg-1) 100%);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+/* 网格背景层（中性白） */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);
+  background-size:48px 48px;
+  mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,#000 30%,transparent 100%);
+  -webkit-mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,#000 30%,transparent 100%)}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+
+/* ── Floating SVG Decorations（中性白） ── */
+.deco-layer{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
+.deco-layer svg{position:absolute;opacity:0.25;animation:decoFloat 14s ease-in-out infinite}
+.deco-layer .star1{top:8%;right:6%;animation-delay:0s;animation-duration:16s;color:#fff}
+.deco-layer .star2{top:38%;right:3%;animation-delay:2s;animation-duration:18s;width:14px;color:#fff}
+.deco-layer .star3{top:65%;right:8%;animation-delay:4s;animation-duration:14s;width:10px;color:#fff}
+.deco-layer .spark1{top:18%;left:4%;animation-delay:1s;animation-duration:17s;color:#fff}
+.deco-layer .spark2{top:78%;left:6%;animation-delay:3s;animation-duration:15s;width:12px;color:#fff}
+.deco-layer .heart1{top:50%;left:2%;animation-delay:5s;animation-duration:20s;width:12px;color:#fff}
+@keyframes decoFloat{0%,100%{transform:translateY(0) rotate(0deg) scale(1);opacity:0.25}50%{transform:translateY(-20px) rotate(15deg) scale(1.1);opacity:0.5}}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;font-family:inherit;
+  font-weight:600;font-size:12px;letter-spacing:1.2px;cursor:pointer;
+  border:1px solid var(--glass-border-strong);background:var(--glass);color:var(--text);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-radius:10px;transition:all .2s ease;user-select:none;white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,0.3)}
+.btn:hover{background:var(--glass-strong);border-color:rgba(255,255,255,0.35);color:#fff;transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(0,0,0,0.4)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--green);color:#000;border-color:transparent;font-weight:700;
+  box-shadow:0 4px 16px var(--green-glow)}
+.btn.primary:hover{background:var(--green);color:#000;transform:translateY(-1px);
+  box-shadow:0 8px 24px var(--green-glow),0 0 32px var(--green-glow)}
+.btn.cyan{background:var(--green);color:#000;border-color:transparent;font-weight:700}
+.btn.gold{background:linear-gradient(135deg,#ffb020 0%,#ff7a00 100%);color:#000;border-color:transparent;font-weight:700}
+.btn.danger{background:linear-gradient(135deg,#ff3355 0%,#cc0033 100%);color:#fff;border-color:transparent;font-weight:700}
+.btn.big{padding:14px 28px;font-size:14px}
+.btn.huge{padding:16px 36px;font-size:15px;letter-spacing:2px;border-radius:14px}
+.btn:disabled{opacity:0.3;cursor:not-allowed;pointer-events:none}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--text-dim)}
+.btn.ghost:hover{background:var(--glass);color:var(--text);transform:none;box-shadow:none}
+
+/* Pill */
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:10px;font-weight:600;
+  background:var(--glass);color:var(--text);border:1px solid var(--glass-border);border-radius:999px;
+  letter-spacing:0.8px;text-transform:uppercase;backdrop-filter:blur(8px)}
+.pill.cyan{background:var(--green-soft);color:var(--green);border-color:rgba(0,255,136,0.4)}
+.pill.warn{background:rgba(255,176,32,0.15);color:var(--amber);border-color:rgba(255,176,32,0.4)}
+.pill.err{background:rgba(255,51,85,0.15);color:var(--red);border-color:rgba(255,51,85,0.4)}
+.pill.hollow{background:transparent;color:var(--text-dim)}
+.pill .dot{width:6px;height:6px;background:currentColor;border-radius:50%}
+.pill.cyan .dot{box-shadow:0 0 8px var(--green)}
+
+/* ── Views ── */
+.view{display:none;flex-direction:column;height:100vh;max-width:1440px;margin:0 auto;
+  position:relative;z-index:2}
+.view.active{display:flex}
+
+/* ── Header ── */
+.header{display:flex;align-items:center;gap:14px;padding:18px 28px;
+  background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--glass-border);flex-shrink:0}
+.header-logo{font-weight:800;font-size:20px;letter-spacing:3px;color:var(--text);
+  padding:6px 16px;border:1px solid var(--glass-border);border-radius:10px;
+  cursor:pointer;user-select:none}
+.header-logo .accent{color:var(--green)}
+.header-sub{font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:3px;text-transform:uppercase;
+  border-left:1px solid var(--glass-border);padding-left:12px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-weight:600;font-size:12px;
+  letter-spacing:1px;cursor:pointer;border:1px solid var(--glass-border-strong);background:var(--glass);
+  color:var(--text);padding:8px 14px;border-radius:8px;transition:all .2s;backdrop-filter:blur(12px)}
+.back-btn:hover{border-color:var(--green);color:var(--green);box-shadow:0 0 12px var(--green-glow)}
+
+/* ── View 1: Project List ── */
+.proj-list-view .content{flex:1;overflow-y:auto;padding:32px 28px}
+.list-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+.list-header h1{font-size:32px;font-weight:800;letter-spacing:1px;color:var(--text)}
+.list-header h1 .accent{color:var(--green)}
+.list-header .sub{font-size:13px;color:var(--text-dim);margin-top:6px;letter-spacing:0.5px}
+
+.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
+.proj-card{position:relative;border:1px solid var(--glass-border);background:var(--glass);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  padding:20px;cursor:pointer;border-radius:16px;transition:all .25s;
+  box-shadow:var(--shadow-card);overflow:hidden}
+.proj-card:hover{transform:translateY(-4px);border-color:var(--glass-border-strong);background:var(--glass-strong);
+  box-shadow:var(--shadow-hover)}
+.proj-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
+.proj-name{font-size:18px;font-weight:800;letter-spacing:0.5px;color:var(--text);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-genre{font-size:10px;font-weight:600;padding:3px 10px;background:var(--glass-strong);color:var(--text-dim);
+  border:1px solid var(--glass-border);border-radius:999px;letter-spacing:1px;text-transform:uppercase;flex-shrink:0}
+.proj-stats{display:flex;gap:14px;font-size:11px;color:var(--text-dim);margin:8px 0 12px;letter-spacing:0.5px;flex-wrap:wrap}
+.proj-stats span b{color:var(--text);font-weight:700}
+.proj-progress{height:3px;background:var(--glass);border-radius:2px;margin:8px 0;position:relative;overflow:hidden}
+.proj-progress-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s;box-shadow:0 0 8px var(--green-glow)}
+.proj-tone-preview{font-size:12px;color:var(--text-dim);line-height:1.6;max-height:48px;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:8px 0}
+.proj-card-foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;
+  padding-top:10px;border-top:1px solid var(--glass-border)}
+.proj-updated{font-size:10px;color:var(--text-faint);letter-spacing:0.5px}
+.proj-actions{display:flex;gap:6px}
+/* 修复重叠：删除按钮平时隐藏，hover 时显示在右下 */
+.card-del{position:absolute;bottom:14px;right:14px;width:26px;height:26px;border:1px solid var(--glass-border);
+  background:var(--glass);color:var(--text-dim);font-size:16px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;border-radius:8px;transition:all .2s;
+  line-height:1;padding:0;z-index:2;backdrop-filter:blur(8px);opacity:0}
+.proj-card:hover .card-del{opacity:1}
+.card-del:hover{background:rgba(255,51,85,0.2);color:var(--red);border-color:var(--red);transform:rotate(90deg)}
+.icon-btn{padding:4px 8px;font-size:10px;font-weight:700;letter-spacing:0.5px;border:1px solid var(--glass-border);
+  background:var(--glass);cursor:pointer;transition:all .15s;font-family:inherit;text-transform:uppercase;border-radius:6px}
+.icon-btn:hover{border-color:var(--glass-border-strong);color:var(--text)}
+.icon-btn.danger{color:var(--red)}
+.icon-btn.danger:hover{background:rgba(255,51,85,0.15);border-color:var(--red)}
+
+/* Empty state */
+.empty-list{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 32px;
+  gap:24px;text-align:center}
+.empty-icon{width:140px;height:140px;border:1px solid var(--glass-border-strong);display:flex;align-items:center;justify-content:center;
+  font-size:64px;font-weight:800;color:var(--text-dim);border-radius:24px;background:var(--glass);
+  backdrop-filter:blur(16px);position:relative}
+.empty-icon::after{content:'';position:absolute;top:-8px;right:-8px;width:32px;height:32px;
+  background:var(--green);border-radius:50%;box-shadow:0 0 24px var(--green-glow)}
+.empty-title{font-size:24px;font-weight:800;letter-spacing:1px;color:var(--text)}
+.empty-sub{font-size:14px;color:var(--text-dim);max-width:440px;line-height:1.7}
+
+/* ── View 2: Project Detail ── */
+.detail-view .content{flex:1;overflow-y:auto;padding:0}
+.detail-hero{padding:40px 28px 28px;
+  background:var(--glass);backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border)}
+.detail-hero h1{font-size:36px;font-weight:800;letter-spacing:1px;margin-bottom:12px;color:var(--text)}
+.detail-hero .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.detail-hero .meta .pill{font-size:10px}
+
+.detail-section{padding:28px;border-bottom:1px solid var(--glass-border)}
+.detail-section h2{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--text-dim);display:inline-block;padding:0;margin-bottom:16px}
+.section-actions{float:right;display:flex;gap:8px}
+
+/* 项目元信息 */
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.meta-cell{padding:14px;border:1px solid var(--glass-border);background:var(--glass);
+  backdrop-filter:blur(12px);border-radius:12px;transition:all .2s}
+.meta-cell:hover{border-color:var(--glass-border-strong);background:var(--glass-strong)}
+.meta-cell .k{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px}
+.meta-cell .v{font-size:22px;font-weight:800;color:var(--text)}
+.meta-cell .v small{font-size:12px;font-weight:600;color:var(--text-dim);margin-left:4px}
+
+/* ── 三大入口（核心交互） ── */
+.entry-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:28px;border-bottom:1px solid var(--glass-border)}
+.entry-card{position:relative;border:1px solid var(--glass-border);background:var(--glass);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  padding:24px;cursor:pointer;border-radius:18px;transition:all .25s;
+  min-height:200px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-card)}
+.entry-card:hover{transform:translateY(-4px);border-color:var(--glass-border-strong);background:var(--glass-strong);
+  box-shadow:var(--shadow-hover)}
+.entry-card.disabled{cursor:not-allowed;opacity:0.35;filter:grayscale(0.5)}
+.entry-card.disabled:hover{transform:none;box-shadow:var(--shadow-card);border-color:var(--glass-border)}
+.entry-card-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.entry-icon{width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:800;background:var(--glass-strong);color:var(--text-dim);
+  border:1px solid var(--glass-border);flex-shrink:0;border-radius:12px}
+.entry-card.tone .entry-icon{color:var(--amber);border-color:rgba(255,176,32,0.3);background:rgba(255,176,32,0.08)}
+.entry-card.workflow .entry-icon{color:var(--green);border-color:rgba(0,255,136,0.3);background:var(--green-soft)}
+.entry-card.workflow.running .entry-icon{color:var(--amber);border-color:rgba(255,176,32,0.4);background:rgba(255,176,32,0.12);animation:wfPulse 1.5s infinite}
+.entry-card.workflow.completed .entry-icon{color:var(--green);border-color:rgba(0,255,136,0.5);background:var(--green-soft);box-shadow:0 0 16px var(--green-glow)}
+.entry-card.workflow.error .entry-icon{color:var(--red);border-color:rgba(255,51,85,0.4);background:rgba(255,51,85,0.12)}
+.entry-card.reader .entry-icon{color:var(--text);background:var(--glass-strong);border-color:var(--glass-border-strong)}
+.entry-label{font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--text-dim)}
+.entry-title{font-size:22px;font-weight:800;letter-spacing:0.5px;margin-bottom:6px;line-height:1.1;color:var(--text)}
+.entry-sub{font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:14px;flex:1}
+.entry-status{font-size:11px;font-weight:600;letter-spacing:1px;padding:6px 12px;
+  border:1px solid var(--glass-border-strong);border-radius:999px;
+  display:inline-flex;align-items:center;gap:6px;align-self:flex-start;background:var(--glass);
+  color:var(--text-dim);backdrop-filter:blur(8px)}
+.entry-card.workflow.running .entry-status{background:rgba(255,176,32,0.12);color:var(--amber);border-color:rgba(255,176,32,0.4)}
+.entry-card.workflow.completed .entry-status{background:var(--green-soft);color:var(--green);border-color:rgba(0,255,136,0.4)}
+.entry-card.workflow.error .entry-status{background:rgba(255,51,85,0.12);color:var(--red);border-color:rgba(255,51,85,0.4)}
+.entry-card.workflow.paused .entry-status{background:rgba(255,176,32,0.12);color:var(--amber);border-color:rgba(255,176,32,0.4)}
+.entry-status .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.entry-card.workflow.running .entry-status .dot{animation:wfPulse 1.2s infinite;box-shadow:0 0 8px currentColor}
+.entry-preview{font-size:12px;color:var(--text-dim);line-height:1.6;margin-top:12px;max-height:48px;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  border-top:1px solid var(--glass-border);padding-top:10px}
+.entry-preview.empty{color:var(--text-faint);font-style:italic}
+@media(max-width:768px){
+  .entry-grid{grid-template-columns:1fr;gap:12px;padding:18px}
+  .entry-card{min-height:auto}
+}
+
+/* 章节列表 */
+.chap-list{display:flex;flex-direction:column;gap:6px}
+.chap-row{display:flex;align-items:center;gap:14px;padding:14px 18px;
+  border:1px solid var(--glass-border);background:var(--glass);backdrop-filter:blur(8px);
+  border-radius:10px;cursor:pointer;transition:all .2s}
+.chap-row:hover{background:var(--glass-strong);border-color:var(--glass-border-strong);transform:translateX(4px)}
+.chap-num{font-size:14px;font-weight:800;min-width:60px;color:var(--text)}
+.chap-title{flex:1;font-size:13px;color:var(--text-dim)}
+.chap-title .desc{font-size:11px;color:var(--text-faint);margin-top:2px}
+.chap-status{font-size:10px;font-weight:700;padding:4px 10px;border-radius:999px;letter-spacing:0.5px;text-transform:uppercase}
+.chap-status.confirmed{background:var(--green-soft);color:var(--green);border:1px solid rgba(0,255,136,0.4)}
+.chap-status.refined{background:var(--glass-strong);color:var(--text);border:1px solid var(--glass-border-strong)}
+.chap-status.draft{background:rgba(255,176,32,0.12);color:var(--amber);border:1px solid rgba(255,176,32,0.4)}
+.chap-status.empty{background:var(--glass);color:var(--text-faint);border:1px solid var(--glass-border)}
+
+/* ── View 3: Workflow Visualizer (全屏) ── */
+.workflow-view{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;
+  background:var(--bg-0);
+  display:none;flex-direction:column;max-width:none;margin:0}
+.workflow-view.active{display:flex}
+.wf-header{display:flex;align-items:center;gap:12px;padding:14px 24px;
+  background:var(--glass);backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border);flex-shrink:0;flex-wrap:nowrap}
+.wf-header .title{font-size:15px;font-weight:800;letter-spacing:0.5px;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px}
+.wf-header .progress{font-size:11px;font-weight:700;letter-spacing:1px;padding:4px 12px;
+  background:var(--green);color:#000;border-radius:999px;flex-shrink:0}
+.wf-header .spacer{flex:1;min-width:8px}
+.wf-status{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:0.5px;color:var(--text);flex-shrink:0}
+.wf-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:wfPulse 1.2s infinite;box-shadow:0 0 12px var(--green-glow)}
+.wf-status.paused .dot{background:var(--amber);box-shadow:0 0 12px rgba(255,176,32,0.5);animation:none}
+.wf-status.error .dot{background:var(--red);box-shadow:0 0 12px rgba(255,51,85,0.5);animation:none}
+.wf-status.completed .dot{background:var(--green);box-shadow:0 0 12px var(--green-glow);animation:none}
+@keyframes wfPulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* 进度统计条 */
+.wf-stats-bar{display:flex;gap:10px;padding:10px 24px;background:var(--glass);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--glass-border);flex-shrink:0;overflow-x:auto;flex-wrap:nowrap}
+.wf-stat{display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--glass);
+  border:1px solid var(--glass-border);border-radius:8px;flex-shrink:0;transition:all .2s}
+.wf-stat:hover{border-color:var(--glass-border-strong);background:var(--glass-strong)}
+.wf-stat .k{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint)}
+.wf-stat .v{font-size:13px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+.wf-stat .v small{font-size:11px;font-weight:600;color:var(--text-dim);margin-left:2px}
+.wf-stat.cyan .v{color:var(--green)}
+.wf-stat.amber .v{color:var(--amber)}
+.wf-stat .progress-mini{height:3px;background:var(--glass);border-radius:2px;width:60px;margin-left:6px;overflow:hidden}
+.wf-stat .progress-mini-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s;box-shadow:0 0 6px var(--green-glow)}
+.wf-stat-entries{display:flex;gap:4px;margin-left:4px}
+.wf-stat-entries .entry-pill{font-size:9px;font-weight:700;padding:2px 6px;background:var(--glass-strong);
+  color:var(--text-dim);border:1px solid var(--glass-border);border-radius:4px;letter-spacing:0.3px}
+.wf-stat-entries .entry-pill.has{color:var(--green);border-color:rgba(0,255,136,0.3);background:var(--green-soft)}
+
+/* 工作流主区：单页流式 */
+.wf-stream{flex:1;overflow-y:auto;padding:24px 32px;max-width:920px;margin:0 auto;width:100%;min-height:0}
+.wf-empty{padding:80px 32px;text-align:center;color:var(--text-faint);font-size:13px;letter-spacing:1px}
+
+/* 步骤卡片 */
+.wf-card{position:relative;border:1px solid var(--glass-border);background:var(--glass);
+  backdrop-filter:blur(16px);border-radius:14px;padding:18px 20px;margin-bottom:14px;
+  transition:border-color .2s;overflow:hidden}
+.wf-card.running{border-color:rgba(0,255,136,0.35);box-shadow:0 0 24px rgba(0,255,136,0.15)}
+.wf-card.paused{border-color:rgba(255,176,32,0.35);background:rgba(255,176,32,0.03)}
+.wf-card.error{border-color:rgba(255,51,85,0.35);background:rgba(255,51,85,0.03)}
+.wf-card.completed{border-color:var(--glass-border)}
+
+.wf-card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.wf-card-num{font-size:11px;font-weight:800;color:var(--text-faint);font-variant-numeric:tabular-nums;
+  letter-spacing:1px;min-width:28px}
+.wf-card-tag{font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;
+  letter-spacing:1px;text-transform:uppercase;border:1px solid var(--glass-border);
+  background:var(--glass);color:var(--text-dim)}
+.wf-card.completed .wf-card-tag{background:var(--green-soft);color:var(--green);border-color:rgba(0,255,136,0.4)}
+.wf-card.running .wf-card-tag{background:var(--green-soft);color:var(--green);border-color:rgba(0,255,136,0.4)}
+.wf-card.paused .wf-card-tag{background:rgba(255,176,32,0.12);color:var(--amber);border-color:rgba(255,176,32,0.4)}
+.wf-card.error .wf-card-tag{background:rgba(255,51,85,0.12);color:var(--red);border-color:rgba(255,51,85,0.4)}
+/* update_entries 用琥珀色突出条目池相关 */
+.wf-card-tag.update_entries{background:rgba(255,176,32,0.12);color:var(--amber);border-color:rgba(255,176,32,0.4)}
+.wf-card-tag.review{background:rgba(160,160,255,0.12);color:#a0a0ff;border-color:rgba(160,160,255,0.4)}
+.wf-card-title{font-size:15px;font-weight:700;color:var(--text);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-card-meta{font-size:10px;font-weight:600;color:var(--text-dim);background:var(--glass);
+  padding:3px 8px;border:1px solid var(--glass-border);border-radius:6px;letter-spacing:0.5px}
+/* 新增/更新条目用绿色突出 */
+.wf-card-meta.entry-new{color:var(--green);border-color:rgba(0,255,136,0.35);background:var(--green-soft)}
+.wf-card-meta.entry-upd{color:var(--amber);border-color:rgba(255,176,32,0.35);background:rgba(255,176,32,0.08)}
+.wf-card-meta.review-pass{color:var(--green);border-color:rgba(0,255,136,0.35);background:var(--green-soft)}
+.wf-card-meta.review-fail{color:var(--red);border-color:rgba(255,51,85,0.35);background:rgba(255,51,85,0.08)}
+.wf-card-time{font-size:10px;font-weight:600;color:var(--text-faint);font-variant-numeric:tabular-nums}
+/* 折叠按钮 */
+.wf-card-toggle{cursor:pointer;font-size:10px;font-weight:700;color:var(--text-dim);
+  padding:2px 8px;border:1px solid var(--glass-border);border-radius:6px;background:var(--glass);
+  transition:all .15s;user-select:none;flex-shrink:0}
+.wf-card-toggle:hover{color:var(--text);border-color:var(--glass-border-strong)}
+.wf-card.collapsed .wf-card-content,
+.wf-card.collapsed .wf-card-summary{display:none}
+.wf-card.collapsed{padding:12px 20px}
+/* 章节分隔符 */
+.wf-chap-divider{display:flex;align-items:center;gap:12px;margin:20px 0 14px;padding-top:14px;
+  border-top:1px dashed var(--glass-border)}
+.wf-chap-divider .num{font-size:11px;font-weight:800;color:var(--green);letter-spacing:1.5px;
+  padding:3px 12px;background:var(--green-soft);border:1px solid rgba(0,255,136,0.3);border-radius:999px}
+.wf-chap-divider .line{flex:1;height:1px;background:var(--glass-border)}
+
+.wf-card-summary{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;line-height:1.5}
+.wf-card-content{font-size:13px;line-height:1.85;color:var(--text);white-space:pre-wrap;
+  font-family:"PingFang SC","Microsoft YaHei",serif;
+  max-height:280px;overflow-y:auto;padding:14px 16px;margin-top:6px;
+  background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);border-radius:10px}
+.wf-card-content::-webkit-scrollbar{width:6px}
+.wf-card-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px}
+.wf-card-content.empty{color:var(--text-faint);font-style:italic}
+.wf-card.running .wf-card-content.empty::after{content:'正在生成...';animation:wfDots 1.4s infinite}
+@keyframes wfDots{0%{content:'正在生成.'}33%{content:'正在生成..'}66%{content:'正在生成...'}}
+
+/* 错误显示 */
+.wf-card-error{font-size:12px;color:var(--red);background:rgba(255,51,85,0.08);
+  padding:8px 12px;border:1px solid rgba(255,51,85,0.3);border-radius:8px;margin-top:8px;line-height:1.6}
+
+/* Workflow action bar */
+.wf-action-bar{padding:16px 32px;border-top:1px solid var(--glass-border);
+  background:var(--glass);backdrop-filter:blur(20px);flex-shrink:0;
+  display:none;gap:10px;align-items:center;flex-wrap:wrap}
+.wf-action-bar.show{display:flex}
+.wf-action-bar .hint{font-size:12px;color:var(--text-dim);margin-right:auto;flex-shrink:0;max-width:340px;
+  line-height:1.5}
+
+/* ── View 4: Chapter Reader (全屏) ── */
+.reader-view{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;
+  background:var(--bg-0);
+  display:none;flex-direction:column}
+.reader-view.active{display:flex}
+.reader-header{display:flex;align-items:center;gap:12px;padding:14px 24px;
+  background:var(--glass);backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border);flex-shrink:0;flex-wrap:nowrap}
+.reader-header .title{font-size:15px;font-weight:800;letter-spacing:0.5px;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px}
+.reader-header .spacer{flex:1;min-width:8px}
+
+.reader-body{flex:1;display:flex;overflow:hidden;min-height:0}
+.reader-sidebar{width:240px;flex-shrink:0;border-right:1px solid var(--glass-border);overflow-y:auto;
+  background:var(--glass);backdrop-filter:blur(12px)}
+.reader-chap-item{padding:12px 16px;border-bottom:1px solid var(--glass-border);cursor:pointer;
+  transition:all .15s;font-size:13px;font-weight:700;color:var(--text)}
+.reader-chap-item:hover{background:var(--glass-strong);transform:translateX(4px)}
+.reader-chap-item.active{background:var(--green);color:#000}
+.reader-chap-item .meta{font-size:10px;font-weight:600;color:var(--text-dim);margin-top:2px;letter-spacing:0.5px}
+.reader-chap-item.active .meta{color:rgba(0,0,0,0.7)}
+
+.reader-main{flex:1;overflow-y:auto;padding:32px 48px;max-width:900px;margin:0 auto}
+.reader-title{font-size:26px;font-weight:800;letter-spacing:1px;margin-bottom:6px;color:var(--text)}
+.reader-meta{font-size:12px;color:var(--text-dim);margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--glass-border)}
+.reader-field-tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.reader-field-tab{padding:8px 16px;text-align:center;font-size:11px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;cursor:pointer;background:var(--glass);color:var(--text-dim);
+  border:1px solid var(--glass-border);border-radius:999px;transition:all .2s;backdrop-filter:blur(8px)}
+.reader-field-tab:hover{background:var(--glass-strong);color:var(--text);border-color:var(--glass-border-strong)}
+.reader-field-tab.active{background:var(--green);color:#000;border-color:transparent;font-weight:800}
+.reader-content{font-size:16px;line-height:1.9;color:var(--text);white-space:pre-wrap;
+  font-family:"PingFang SC","Microsoft YaHei",serif;padding:24px;
+  background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--glass-border);border-radius:12px}
+.reader-content.empty{color:var(--text-faint);font-style:italic}
+.reader-edit{width:100%;min-height:480px;border:1px solid var(--glass-border-strong);padding:18px;font-size:16px;
+  font-family:inherit;line-height:1.9;resize:vertical;outline:none;background:var(--glass);color:var(--text);
+  border-radius:12px;backdrop-filter:blur(12px)}
+.reader-edit:focus{border-color:var(--green);box-shadow:0 0 12px var(--green-glow)}
+.reader-actions{margin-top:18px;display:flex;gap:14px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.reader-actions-right{display:flex;gap:8px;flex-wrap:wrap}
+.reader-edit-info{font-size:11px;color:var(--text-dim);letter-spacing:0.5px}
+.reader-edit-info b{color:var(--green);font-weight:700}
+.reader-edit-info .warn{color:var(--amber)}
+
+/* ── Modals ── */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:300;
+  display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.overlay.show{opacity:1;pointer-events:auto}
+
+.modal{position:relative;background:var(--bg-2);border:1px solid var(--glass-border-strong);
+  box-shadow:0 24px 64px rgba(0,0,0,0.7);
+  padding:28px;width:560px;max-width:92vw;max-height:90vh;overflow-y:auto;border-radius:20px;
+  backdrop-filter:blur(20px)}
+.modal h3{font-size:22px;font-weight:800;letter-spacing:1px;margin-bottom:6px;color:var(--text);
+  display:flex;align-items:center;gap:10px}
+.modal h3::before{content:'';display:inline-block;width:6px;height:24px;background:var(--green);border-radius:3px;
+  box-shadow:0 0 12px var(--green-glow)}
+.modal .desc{font-size:12px;color:var(--text-dim);margin-bottom:22px;line-height:1.6}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--glass-border)}
+
+.form-row{margin-bottom:14px}
+.form-row label{display:block;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:6px;color:var(--text-dim)}
+.form-row label .req{color:var(--red)}
+.form-row label .opt{color:var(--text-faint);font-weight:400;text-transform:none;letter-spacing:0}
+.form-row input,.form-row textarea,.form-row select{width:100%;border:1px solid var(--glass-border-strong);
+  padding:12px 14px;font-family:inherit;font-size:13px;background:var(--glass);color:var(--text);outline:none;
+  border-radius:10px;transition:all .15s;backdrop-filter:blur(8px)}
+.form-row input::placeholder,.form-row textarea::placeholder{color:var(--text-faint)}
+.form-row input:focus,.form-row textarea:focus,.form-row select:focus{border-color:var(--green);background:var(--glass-strong);
+  box-shadow:0 0 12px var(--green-glow)}
+.form-row textarea{min-height:120px;resize:vertical;line-height:1.6}
+.form-row select{cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4 L6 8 L10 4' stroke='%23ffffff' stroke-width='2' fill='none'/></svg>");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:32px}
+.form-row-2{display:flex;gap:12px}
+.form-row-2 > *{flex:1}
+.form-hint{font-size:11px;color:var(--text-faint);margin-top:4px}
+
+/* Tone textarea in modal */
+#toneInput{width:100%;min-height:200px;border:1px solid var(--glass-border-strong);padding:14px;
+  font-family:inherit;font-size:13px;line-height:1.7;resize:vertical;outline:none;
+  background:var(--glass);color:var(--text);border-radius:10px;backdrop-filter:blur(8px)}
+#toneInput:focus{border-color:var(--green);box-shadow:0 0 12px var(--green-glow)}
+#toneInput::placeholder{color:var(--text-faint)}
+
+/* Modify textarea in modal */
+#wfModifyInput{width:100%;min-height:120px;border:1px solid var(--glass-border-strong);padding:12px;
+  font-family:inherit;font-size:13px;resize:vertical;outline:none;background:var(--glass);color:var(--text);
+  border-radius:10px;backdrop-filter:blur(8px)}
+#wfModifyInput:focus{border-color:var(--green);box-shadow:0 0 12px var(--green-glow)}
+#wfModifyInput::placeholder{color:var(--text-faint)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120%);
+  background:var(--bg-2);color:var(--text);padding:12px 20px;font-size:13px;font-weight:600;letter-spacing:0.5px;
+  border:1px solid var(--glass-border-strong);border-radius:12px;box-shadow:var(--shadow-card);
+  z-index:400;transition:transform .3s cubic-bezier(.4,0,.2,1);
+  display:flex;align-items:center;gap:8px;backdrop-filter:blur(20px)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.cyan{background:var(--green-soft);color:var(--green);border-color:rgba(0,255,136,0.4);box-shadow:0 8px 32px var(--green-glow)}
+.toast.err{background:rgba(255,51,85,0.15);color:var(--red);border-color:rgba(255,51,85,0.4)}
+
+/* Responsive */
+@media(max-width:768px){
+  .reader-body{flex-direction:column}
+  .reader-sidebar{width:100%;height:30%;border-right:0;border-bottom:1px solid var(--glass-border)}
+  .reader-main{padding:18px 20px}
+  .wf-header{gap:8px;padding:12px 16px}
+  .wf-header .title{max-width:140px;font-size:13px}
+  .reader-header{gap:8px;padding:12px 16px}
+  .reader-header .title{max-width:140px;font-size:13px}
+  .wf-stream{padding:16px 14px}
+  .wf-action-bar{padding:12px 16px}
+}
+</style>
+</head>
+<body>
+
+<!-- Floating SVG Decorations -->
+<div class="deco-layer">
+  <svg class="star1" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 0 L12 8 L20 10 L12 12 L10 20 L8 12 L0 10 L8 8 Z" fill="currentColor"/></svg>
+  <svg class="star2" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 0 L12 8 L20 10 L12 12 L10 20 L8 12 L0 10 L8 8 Z" fill="currentColor"/></svg>
+  <svg class="star3" width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 0 L12 8 L20 10 L12 12 L10 20 L8 12 L0 10 L8 8 Z" fill="currentColor"/></svg>
+  <svg class="spark1" width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 0 L11 22 M0 11 L22 11 M3 3 L19 19 M19 3 L3 19" stroke="currentColor" stroke-width="2"/></svg>
+  <svg class="spark2" width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 0 L12 8 L20 10 L12 12 L10 20 L8 12 L0 10 L8 8 Z" fill="currentColor"/></svg>
+  <svg class="heart1" width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 18 L2 10 Q-1 6 2 3 Q5 0 8 3 L10 5 L12 3 Q15 0 18 3 Q21 6 18 10 Z" fill="currentColor"/></svg>
+</div>
+
+<!-- ════════════ View 1: Project List ════════════ -->
+<div class="view active" id="view-list">
+  <header class="header">
+    <div class="header-logo" onclick="showView('list')">F<span class="accent">·</span>ORGE</div>
+    <div class="header-sub">小说工坊</div>
+    <div class="header-right">
+      <span class="pill hollow" id="apiPill">DS</span>
+      <button class="btn primary" onclick="openCreate()">+ 新建项目</button>
+    </div>
+  </header>
+  <div class="content">
+    <div class="list-header">
+      <div>
+        <h1>我的<span class="accent">·</span>项目</h1>
+        <div class="sub">填一段基调，一键生成整本小说</div>
+      </div>
+    </div>
+    <div id="projGrid"></div>
+    <div id="emptyList" class="empty-list" style="display:none">
+      <div class="empty-icon">+</div>
+      <div>
+        <div class="empty-title">开始你的第一本小说</div>
+        <div class="empty-sub">点击「新建项目」，填好基调（一段话描述你想写什么样的小说），系统会自动跑完整本：规划 → 写作 → 质检 → 润色 → 确认。中途可停止、修改、续跑。</div>
+      </div>
+      <button class="btn primary big" onclick="openCreate()">▶ 新建项目</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ View 2: Project Detail ════════════ -->
+<div class="view" id="view-detail">
+  <header class="header">
+    <button class="back-btn" onclick="showView('list')">← 返回</button>
+    <div class="header-logo" style="cursor:default">F<span class="accent">·</span>ORGE</div>
+    <div class="header-sub" id="detailBreadcrumb">项目详情</div>
+    <div class="header-right">
+      <button class="btn ghost" onclick="deleteCurrentProject()">删除</button>
+    </div>
+  </header>
+  <div class="content" id="detailContent"></div>
+</div>
+
+<!-- ════════════ View 3: Workflow Visualizer (单页流式) ════════════ -->
+<div class="workflow-view" id="view-workflow">
+  <div class="wf-header">
+    <button class="back-btn" onclick="closeWorkflow()">← 返回</button>
+    <div class="title" id="wfTitle">工作流</div>
+    <div class="progress" id="wfProgress">0/0</div>
+    <div class="spacer"></div>
+    <div class="wf-status" id="wfStatus"><span class="dot"></span><span id="wfStatusText">运行中</span></div>
+    <button class="btn danger" id="wfStopBtn" onclick="wfStop()">■ 中断</button>
+  </div>
+  <div class="wf-stats-bar" id="wfStatsBar"></div>
+  <div class="wf-stream" id="wfStream"></div>
+  <div class="wf-action-bar" id="wfActionBar">
+    <div class="hint" id="wfActionHint"></div>
+    <button class="btn" id="wfActionReader" onclick="wfOpenReader()">📖 查阅已生成</button>
+    <button class="btn" id="wfAction1"></button>
+    <button class="btn primary" id="wfAction2"></button>
+  </div>
+</div>
+
+<!-- ════════════ View 4: Chapter Reader ════════════ -->
+<div class="reader-view" id="view-reader">
+  <div class="reader-header">
+    <button class="back-btn" onclick="closeReader()" style="background:var(--paper)">← 返回</button>
+    <div class="title" id="readerTitle">章节阅读</div>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="readerUnlockBtn" onclick="readerUnlock()" style="display:none">🔓 解锁</button>
+    <button class="btn ghost" id="readerEditBtn" onclick="readerToggleEdit()">✎ 编辑</button>
+  </div>
+  <div class="reader-body">
+    <div class="reader-sidebar" id="readerSidebar"></div>
+    <div class="reader-main">
+      <div class="reader-title" id="readerChapTitle">第 X 章</div>
+      <div class="reader-meta" id="readerChapMeta"></div>
+      <div class="reader-field-tabs" id="readerFieldTabs">
+        <div class="reader-field-tab active" data-field="refined_content" onclick="readerSwitchField('refined_content')">润色稿</div>
+        <div class="reader-field-tab" data-field="content" onclick="readerSwitchField('content')">原始稿</div>
+        <div class="reader-field-tab" data-field="plan" onclick="readerSwitchField('plan')">规划</div>
+      </div>
+      <div id="readerContentArea">
+        <div class="reader-content empty" id="readerContent">选择章节查看内容</div>
+      </div>
+      <div class="reader-actions" id="readerActions" style="display:none">
+        <div class="reader-edit-info" id="readerEditInfo"></div>
+        <div class="reader-actions-right">
+          <button class="btn" onclick="readerCancelEdit()">取消</button>
+          <button class="btn" onclick="readerSave(false)">保存</button>
+          <button class="btn primary" onclick="readerSave(true)">保存并确认（锁定）</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ Create Project Modal ════════════ -->
+<div class="overlay" id="createModal">
+  <div class="modal">
+    <h3>新建小说项目</h3>
+    <div class="desc">填好基调，系统会自动跑完整本：规划 → 写作 → 质检 → 润色 → 确认。</div>
+    <div class="form-row">
+      <label>项目名称 <span class="req">*</span></label>
+      <input type="text" id="cName" placeholder="例如：散帅" onkeydown="if(event.key==='Enter')document.getElementById('cGenre').focus()">
+      <div class="form-hint">作为目录名，不能含 / \ : * ? &lt; &gt; | 等字符</div>
+    </div>
+    <div class="form-row">
+      <label>小说类型 <span class="req">*</span></label>
+      <select id="cGenre">
+        <option value="">请选择...</option>
+        <option>都市</option><option>玄幻</option><option>科幻</option><option>武侠</option>
+        <option>悬疑</option><option>历史</option><option>言情</option><option>其他</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>基调 / 风格 <span class="opt">（最重要，决定整本小说方向）</span></label>
+      <textarea id="cTone" placeholder="例如：都市爽文，主角是个看起来普通但深藏不露的年轻人，被前女友嫌弃后逆袭。节奏要快，每章都有打脸或反转，对话多过描写，文风接地气。主角腹黑但讲义气，遇到装逼的直接怼回去。"></textarea>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>事件数 <span class="opt">默认 3</span></label>
+        <input type="number" id="cEvents" value="3" min="1" max="20">
+      </div>
+      <div class="form-row">
+        <label>总章数 <span class="opt">默认 事件×3</span></label>
+        <input type="number" id="cChapters" value="9" min="1" max="100">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>每章字数 <span class="opt">默认 1000</span></label>
+      <input type="number" id="cWords" value="1000" min="300" max="5000" step="100">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreate()">取消</button>
+      <button class="btn primary" id="createBtn" onclick="submitCreate()">▶ 创建并启动</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ Modify Modal (工作流中断后提意见) ════════════ -->
+<div class="overlay" id="wfModifyModal">
+  <div class="modal">
+    <h3>提意见 / 补充</h3>
+    <div class="desc">工作流会基于你的意见针对性重跑，不会从头开始。意见用完后会自动清空，不会影响后续章节。</div>
+    <div class="form-row" style="margin-bottom:12px">
+      <label style="font-size:12px;color:var(--text-dim);min-width:80px">目标章节</label>
+      <input type="number" id="wfModifyTargetCh" min="0" placeholder="0 = 重跑当前章" style="flex:1">
+    </div>
+    <textarea id="wfModifyInput" placeholder="例如：第3章对话太干，多加点环境描写；第5章主角反应不对，应该更冷淡；整体节奏太快，每章多铺一点..."></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeWfModify()">保存意见</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ Tone Edit Modal ════════════ -->
+<div class="overlay" id="toneModal">
+  <div class="modal">
+    <h3>基调 / 风格</h3>
+    <div class="desc">一段话描述你想写什么样的小说。基调决定整本方向，工作流每个步骤都会参考它。</div>
+    <div class="form-row">
+      <label>基调内容 <span class="opt">建议 50-300 字</span></label>
+      <textarea id="toneInput" style="min-height:200px" placeholder="例如：都市爽文，主角是个看起来普通但深藏不露的年轻人，被前女友嫌弃后逆袭。节奏要快，每章都有打脸或反转，对话多过描写，文风接地气。主角腹黑但讲义气，遇到装逼的直接怼回去。"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeToneModal()">取消</button>
+      <button class="btn primary" onclick="saveTone()">保存基调</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+let projects = [];
+let currentProject = null;       // project detail data
+let currentProjectName = '';
+let engineState = null;
+let polling = false;
+let readerCh = null;             // {ch_num, field, isEditing}
+let readerFields = {refined_content:'',content:'',plan:'',review_feedback:''};
+
+init();
+
+async function init() {
+  await loadProjects();
+  startPolling();
+}
+
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── View Switching ──
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (name === 'list') loadProjects();
+}
+
+// ── Projects List ──
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/projects');
+    projects = await res.json();
+    if (!Array.isArray(projects)) projects = [];
+  } catch(e) { projects = []; }
+
+  const grid = document.getElementById('projGrid');
+  const empty = document.getElementById('emptyList');
+  if (projects.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // 拉每个项目的详情（用于卡片显示）
+  const detailed = await Promise.all(projects.map(p => fetch(`/api/project/${p.name}`).then(r => r.json()).catch(() => null)));
+  grid.innerHTML = detailed.filter(Boolean).map(p => {
+    const total = p.total_chapters || 0;
+    const written = p.chapter_counter || 0;
+    const pct = total ? Math.min(100, Math.round(written / total * 100)) : 0;
+    const updated = p.updated_at || '';
+    const tone = p.tone || '';
+    const isRunning = engineState?.status === 'running' && engineState?.project === p.name;
+    const statusPill = isRunning ? '<span class="pill cyan" style="font-size:9px;padding:2px 8px"><span class="dot"></span>运行中</span>' : '';
+    return `
+      <div class="proj-card" onclick="enterProject('${esc(p.name)}')">
+        <button class="card-del" title="删除项目" onclick="event.stopPropagation();deleteProject('${esc(p.name)}')">×</button>
+        <div class="proj-card-head">
+          <div class="proj-name">${esc(p.name)}</div>
+          <div class="proj-genre">${esc(p.genre || '未分类')}</div>
+        </div>
+        <div class="proj-stats">
+          <span><b>${p.current_event || 0}</b>/<b>${p.total_events || 0}</b> 事件</span>
+          <span><b>${written}</b>/<b>${total}</b> 章</span>
+          <span><b>${p.total_words || 0}</b> 字</span>
+          ${statusPill}
+        </div>
+        <div class="proj-progress"><div class="proj-progress-fill" style="width:${pct}%"></div></div>
+        ${tone ? `<div class="proj-tone-preview">${esc(tone)}</div>` : '<div class="proj-tone-preview" style="color:var(--muted);font-style:italic">未设置基调</div>'}
+        <div class="proj-card-foot">
+          <div class="proj-updated">${updated ? '更新于 ' + updated : '点击进入管理 →'}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function enterProject(name) {
+  currentProjectName = name;
+  await loadProjectDetail(name);
+  showView('detail');
+}
+
+async function loadProjectDetail(name) {
+  try {
+    const res = await fetch(`/api/project/${name}`);
+    currentProject = await res.json();
+    if (currentProject.error) { toast(currentProject.error, 'err'); return; }
+  } catch(e) { toast('加载失败', 'err'); return; }
+  renderProjectDetail();
+}
+
+function renderProjectDetail() {
+  const p = currentProject;
+  if (!p) return;
+  document.getElementById('detailBreadcrumb').textContent = p.name;
+  const apiPill = document.getElementById('apiPill');
+  apiPill.className = 'pill ' + (p.has_api_key ? 'cyan' : 'hollow');
+  apiPill.textContent = p.has_api_key ? 'DS 已连接' : 'DS 未连接';
+
+  const total = p.total_chapters || 0;
+  const written = p.chapter_counter || 0;
+  const pct = total ? Math.min(100, Math.round(written / total * 100)) : 0;
+
+  // 引擎状态：未启动/运行中/暂停/已完成/出错
+  const engRunning = engineState?.status === 'running' && engineState?.project === p.name;
+  const engPaused  = engineState?.status === 'paused'  && engineState?.project === p.name;
+  const engDone    = engineState?.status === 'completed' && engineState?.project === p.name;
+  const engError   = engineState?.status === 'error'   && engineState?.project === p.name;
+
+  let wfState = 'idle';
+  let wfStatusText = '▶ 一键启动';
+  let wfAction = 'launchWorkflow()';
+  let wfSub = '规划 → 写作 → 质检 → 润色 → 确认';
+  if (engRunning) {
+    wfState = 'running';
+    wfStatusText = '运行中 · 查看进度';
+    wfAction = 'openWorkflow()';
+    wfSub = `第 ${engineState.current_index || 0}/${engineState.total_steps || 0} 步`;
+  } else if (engPaused) {
+    wfState = 'paused';
+    wfStatusText = '已暂停 · 继续 / 查看';
+    wfAction = 'openWorkflow()';
+    wfSub = '可修改内容后继续';
+  } else if (engDone) {
+    wfState = 'completed';
+    wfStatusText = '✓ 已完成 · 重跑';
+    wfAction = 'restartWorkflow()';
+    wfSub = '所有章节已生成并确认';
+  } else if (engError) {
+    wfState = 'error';
+    wfStatusText = '⚠ 出错 · 查看';
+    wfAction = 'openWorkflow()';
+    wfSub = engineState?.error?.slice(0, 60) || '点击查看错误';
+  } else if (written > 0) {
+    wfState = 'paused';
+    wfStatusText = '▶ 继续跑';
+    wfAction = 'launchWorkflow()';
+    wfSub = `已生成 ${written}/${total} 章，可继续`;
+  }
+
+  // 章节列表（次要区块，已生成才显示）
+  let chaptersHtml = '';
+  let firstChNum = 0;
+  if (p.events) {
+    for (const evt of p.events) {
+      for (const ch of (evt.chapters || [])) {
+        if (!firstChNum) firstChNum = ch.num;
+        const cls = ch.status === 'human_confirmed' ? 'confirmed'
+          : ch.status === 'refined' ? 'refined'
+          : ch.has_content ? 'draft' : 'empty';
+        const txt = ch.status === 'human_confirmed' ? '已确认'
+          : ch.status === 'refined' ? '已润色'
+          : ch.status === 'reviewed' ? '已质检'
+          : ch.has_content ? '草稿' : '空';
+        chaptersHtml += `
+          <div class="chap-row" onclick="openReader(${ch.num})">
+            <div class="chap-num">第${ch.num}章</div>
+            <div class="chap-title">
+              <div>${ch.word_count || 0} 字</div>
+              <div class="desc">事件 ${evt.num}</div>
+            </div>
+            <div class="chap-status ${cls}">${txt}</div>
+          </div>`;
+      }
+    }
+  }
+  if (!chaptersHtml) chaptersHtml = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">还没有章节，跑工作流后会自动生成</div>';
+
+  // 基调预览
+  const tonePreview = p.tone
+    ? `<div class="entry-preview">${esc(p.tone.slice(0, 80))}${p.tone.length > 80 ? '...' : ''}</div>`
+    : '<div class="entry-preview empty">点击填写基调，决定整本小说方向</div>';
+  const toneStatus = p.tone ? '已设置' : '未设置';
+
+  // 查阅入口的禁用状态
+  const readerDisabled = written === 0 ? 'disabled' : '';
+  const readerAction = written > 0 ? `openReader(${firstChNum || 1})` : '';
+  const readerStatus = written > 0 ? `${written}/${total} 章` : '暂无内容';
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero">
+      <h1>${esc(p.name)}</h1>
+      <div class="meta">
+        <span class="pill">${esc(p.genre || '未分类')}</span>
+        <span class="pill hollow">${p.total_words || 0} 字</span>
+        <span class="pill hollow">${written}/${total} 章</span>
+        ${pct > 0 ? `<span class="pill hollow">${pct}%</span>` : ''}
+        ${engRunning ? '<span class="pill cyan"><span class="dot"></span>运行中</span>' : ''}
+      </div>
+    </div>
+
+    <div class="entry-grid">
+      <div class="entry-card tone" onclick="editTone()">
+        <div class="entry-card-head">
+          <div class="entry-icon">✎</div>
+          <div>
+            <div class="entry-label">01 · 基调</div>
+          </div>
+        </div>
+        <div class="entry-title">基调 / 风格</div>
+        <div class="entry-sub">一段话描述你想写什么样的小说，决定整本方向</div>
+        <div class="entry-status">${toneStatus}</div>
+        ${tonePreview}
+      </div>
+
+      <div class="entry-card workflow ${wfState}" onclick="${wfAction}">
+        <div class="entry-card-head">
+          <div class="entry-icon">▶</div>
+          <div>
+            <div class="entry-label">02 · 工作流</div>
+          </div>
+        </div>
+        <div class="entry-title">跑工作流</div>
+        <div class="entry-sub">${esc(wfSub)}</div>
+        <div class="entry-status"><span class="dot"></span>${wfStatusText}</div>
+      </div>
+
+      <div class="entry-card reader ${readerDisabled}" ${readerAction ? `onclick="${readerAction}"` : ''}>
+        <div class="entry-card-head">
+          <div class="entry-icon">📖</div>
+          <div>
+            <div class="entry-label">03 · 查阅</div>
+          </div>
+        </div>
+        <div class="entry-title">查阅内容</div>
+        <div class="entry-sub">阅读已生成章节，可编辑润色稿/原始稿/规划</div>
+        <div class="entry-status">${readerStatus}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h2>项目信息</h2>
+      <div class="meta-grid">
+        <div class="meta-cell"><div class="k">类型</div><div class="v">${esc(p.genre || '未设置')}</div></div>
+        <div class="meta-cell"><div class="k">事件数</div><div class="v">${p.total_events || 0}</div></div>
+        <div class="meta-cell"><div class="k">总章数</div><div class="v">${total}</div></div>
+        <div class="meta-cell"><div class="k">每章字数</div><div class="v">${p.words_per_chapter || 1000}</div></div>
+        <div class="meta-cell"><div class="k">已写章节</div><div class="v">${written}<small>/ ${total}</small></div></div>
+        <div class="meta-cell"><div class="k">总字数</div><div class="v">${p.total_words || 0}</div></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h2>章节列表</h2>
+      <div class="chap-list">${chaptersHtml}</div>
+    </div>
+  `;
+}
+
+// ── Tone 编辑（modal） ──
+function editTone() {
+  const current = currentProject?.tone || '';
+  document.getElementById('toneInput').value = current;
+  document.getElementById('toneModal').classList.add('show');
+  setTimeout(() => document.getElementById('toneInput').focus(), 100);
+}
+function closeToneModal() {
+  document.getElementById('toneModal').classList.remove('show');
+}
+async function saveTone() {
+  const tone = document.getElementById('toneInput').value.trim();
+  try {
+    const res = await fetch(`/api/project/${currentProjectName}/tone`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tone}),
+    });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    currentProject.tone = tone;
+    closeToneModal();
+    renderProjectDetail();
+    toast('基调已保存', 'cyan');
+  } catch(e) { toast('保存失败', 'err'); }
+}
+
+// ── 删除项目 ──
+async function deleteProject(name) {
+  if (!confirm(`确认删除项目「${name}」？所有章节和设定都会丢失。`)) return;
+  try {
+    const res = await fetch(`/api/project/${name}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    toast('项目已删除', 'cyan');
+    loadProjects();
+  } catch(e) { toast('删除失败', 'err'); }
+}
+async function deleteCurrentProject() {
+  if (currentProjectName) deleteProject(currentProjectName);
+  showView('list');
+}
+
+// ── Create ──
+function openCreate() { document.getElementById('createModal').classList.add('show'); setTimeout(() => document.getElementById('cName').focus(), 100); }
+function closeCreate() { document.getElementById('createModal').classList.remove('show'); }
+async function submitCreate() {
+  const name = document.getElementById('cName').value.trim();
+  const genre = document.getElementById('cGenre').value;
+  const tone = document.getElementById('cTone').value.trim();
+  const total_events = parseInt(document.getElementById('cEvents').value) || 3;
+  const total_chapters = parseInt(document.getElementById('cChapters').value) || (total_events * 3);
+  const words_per_chapter = parseInt(document.getElementById('cWords').value) || 1000;
+  if (!name) { toast('请填项目名称', 'err'); return; }
+  if (!genre) { toast('请选择类型', 'err'); return; }
+
+  const btn = document.getElementById('createBtn');
+  btn.disabled = true; btn.textContent = '创建中...';
+  try {
+    const res = await fetch('/api/project/create_and_start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, genre, tone, total_events, total_chapters, words_per_chapter, auto_run:true}),
+    });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); btn.disabled = false; btn.textContent = '▶ 创建并启动'; return; }
+    closeCreate();
+    toast('项目已创建，工作流已启动', 'cyan');
+    await enterProject(name);
+    setTimeout(() => openWorkflow(), 500);
+  } catch(e) { toast('创建失败：' + e.message, 'err'); }
+  btn.disabled = false; btn.textContent = '▶ 创建并启动';
+}
+
+// ── Workflow ──
+async function launchWorkflow() {
+  if (!currentProjectName) return;
+  try {
+    await fetch('/api/step/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project: currentProjectName, auto_run:true}),
+    });
+    openWorkflow();
+  } catch(e) { toast('启动失败', 'err'); }
+}
+async function restartWorkflow() {
+  if (!currentProjectName) return;
+  if (!confirm('重新跑工作流会重置进度。继续？')) return;
+  try {
+    await fetch('/api/step/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project: currentProjectName, auto_run:true}),
+    });
+    openWorkflow();
+  } catch(e) { toast('启动失败', 'err'); }
+}
+function openWorkflow() {
+  document.getElementById('view-workflow').classList.add('active');
+  document.getElementById('wfTitle').textContent = currentProjectName + ' · 工作流';
+  setTimeout(pollEngine, 200);
+}
+function closeWorkflow() {
+  document.getElementById('view-workflow').classList.remove('active');
+  loadProjectDetail(currentProjectName);
+}
+async function wfStop() {
+  try {
+    await fetch('/api/step/stop', {method:'POST'});
+    toast('已停止', '');
+    setTimeout(pollEngine, 200);
+  } catch(e) {}
+}
+function wfModify() { document.getElementById('wfModifyInput').value = ''; document.getElementById('wfModifyModal').classList.add('show'); setTimeout(() => document.getElementById('wfModifyInput').focus(), 100); }
+function closeWfModify() { document.getElementById('wfModifyModal').classList.remove('show'); }
+
+function renderWorkflow() {
+  const state = engineState;
+  if (!state) return;
+  // 状态
+  const statusEl = document.getElementById('wfStatus');
+  const statusText = document.getElementById('wfStatusText');
+  const statusMap = {idle:'就绪', running:'运行中', paused:'已中断', completed:'完成', error:'出错'};
+  statusEl.className = 'wf-status ' + (state.status || '');
+  statusText.textContent = statusMap[state.status] || state.status;
+  // 进度
+  document.getElementById('wfProgress').textContent = `${state.current_index || 0}/${state.total_steps || 0}`;
+  // 中断按钮：只有 running 才能点
+  document.getElementById('wfStopBtn').disabled = (state.status !== 'running');
+
+  // 进度统计条
+  renderStatsBar(state);
+
+  // 步骤流（单页展示完整内容 + 章节分隔符）
+  const stream = document.getElementById('wfStream');
+  if (!state.steps || state.steps.length === 0) {
+    stream.innerHTML = '<div class="wf-empty">工作流即将开始...</div>';
+  } else {
+    let html = '';
+    let lastChapKey = '';  // 用于章节/事件分隔符
+    state.steps.forEach((step, i) => {
+      // 章节分隔符：根据 step.meta.chapter_num 和 step.meta.event
+      const chNum = step.meta?.chapter_num;
+      const evtNum = step.meta?.event;
+      // load_entries 步骤用事件作为分组（事件纲起点），其他用章节号
+      const chapKey = chNum ? `ch-${chNum}` : (evtNum ? `evt-${evtNum}-load` : `step-${i}`);
+      const showDivider = (i > 0) && (chapKey !== lastChapKey);
+      if (showDivider) {
+        const label = step.type === 'load_entries' && evtNum ? `事件 ${evtNum} · 事件纲` :
+                      chNum ? `第 ${chNum} 章` : '';
+        if (label) {
+          html += `<div class="wf-chap-divider"><span class="num">${label}</span><span class="line"></span></div>`;
+        }
+      }
+      lastChapKey = chapKey;
+      html += renderStepCard(step, i);
+    });
+    stream.innerHTML = html;
+    // 绑定折叠按钮
+    stream.querySelectorAll('.wf-card-toggle').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const card = btn.closest('.wf-card');
+        card.classList.toggle('collapsed');
+        btn.textContent = card.classList.contains('collapsed') ? '展开' : '折叠';
+      };
+    });
+    // 运行中自动滚到底
+    if (state.status === 'running') {
+      const last = stream.lastElementChild;
+      if (last) last.scrollIntoView({block:'end', behavior:'smooth'});
+    }
+  }
+
+  // Action bar：running 不显示；其它状态显示对应动作
+  const actionBar = document.getElementById('wfActionBar');
+  const hintEl = document.getElementById('wfActionHint');
+  const readerBtn = document.getElementById('wfActionReader');
+  const btn1 = document.getElementById('wfAction1');
+  const btn2 = document.getElementById('wfAction2');
+  const hasGenerated = (state.written_chapters > 0) ||
+                       state.steps?.some(s => s.status === 'completed' && s.meta?.chapter_num);
+
+  if (state.status === 'running') {
+    actionBar.classList.remove('show');
+  } else if (state.status === 'paused') {
+    // 中断后：可以查阅 + 提意见针对性重跑
+    actionBar.classList.add('show');
+    readerBtn.style.display = hasGenerated ? '' : 'none';
+    hintEl.textContent = '已中断 · 提意见/补充后可针对性重跑，或查阅已生成内容';
+    btn1.textContent = '✎ 提意见/补充'; btn1.className = 'btn'; btn1.style.display = '';
+    btn1.onclick = wfModify;
+    btn2.textContent = '↻ 针对性重跑'; btn2.className = 'btn primary'; btn2.style.display = '';
+    btn2.onclick = wfResumeFromModify;
+  } else if (state.status === 'completed') {
+    actionBar.classList.add('show');
+    readerBtn.style.display = hasGenerated ? '' : 'none';
+    hintEl.textContent = '✓ 全部章节已完成';
+    btn1.style.display = 'none';
+    btn2.textContent = '↻ 重新跑'; btn2.className = 'btn primary'; btn2.style.display = '';
+    btn2.onclick = wfRestart;
+  } else if (state.status === 'error') {
+    actionBar.classList.add('show');
+    readerBtn.style.display = hasGenerated ? '' : 'none';
+    hintEl.textContent = '⚠ 出错：' + (state.error || '').slice(0, 80);
+    btn1.style.display = 'none';
+    btn2.textContent = '▶ 重新启动'; btn2.className = 'btn primary'; btn2.style.display = '';
+    btn2.onclick = wfRestart;
+  } else {
+    actionBar.classList.remove('show');
+  }
+}
+
+// 渲染进度统计条（事件/章节/字数/条目池）
+function renderStatsBar(state) {
+  const bar = document.getElementById('wfStatsBar');
+  if (!bar) return;
+  const evtCur = state.current_event || 0;
+  const evtTot = state.total_events || 0;
+  const chWritten = state.written_chapters || 0;
+  const chTotal = state.total_chapters || 0;
+  const words = state.total_words || 0;
+  const totalEntries = state.total_entries || 0;
+  const entries = state.entries_summary || {};
+  const chPct = chTotal > 0 ? Math.round(chWritten / chTotal * 100) : 0;
+
+  // 条目池分类 pills
+  const ENTRY_LABELS = {
+    '人物设定':'人', '势力设定':'势', '概念设定':'念', '道具设定':'物', '地点设定':'地', '其他设定':'他'
+  };
+  const entryPills = Object.keys(ENTRY_LABELS).map(cat => {
+    const n = entries[cat] || 0;
+    return `<span class="entry-pill ${n > 0 ? 'has' : ''}" title="${cat}">${ENTRY_LABELS[cat]}${n}</span>`;
+  }).join('');
+
+  bar.innerHTML = `
+    <div class="wf-stat"><span class="k">事件</span><span class="v">${evtCur}<small>/${evtTot}</small></span></div>
+    <div class="wf-stat cyan">
+      <span class="k">章节</span>
+      <span class="v">${chWritten}<small>/${chTotal}</small></span>
+      <div class="progress-mini"><div class="progress-mini-fill" style="width:${chPct}%"></div></div>
+    </div>
+    <div class="wf-stat"><span class="k">字数</span><span class="v">${words >= 10000 ? (words/10000).toFixed(1)+'万' : words}</span></div>
+    <div class="wf-stat amber"><span class="k">条目</span><span class="v">${totalEntries}</span>
+      <div class="wf-stat-entries">${entryPills}</div>
+    </div>
+  `;
+}
+
+// 渲染单个步骤卡片
+function renderStepCard(step, i) {
+  const cls = step.status || 'pending';
+  const dur = step.duration_ms ? (step.duration_ms > 1000 ? (step.duration_ms/1000).toFixed(1)+'s' : step.duration_ms+'ms') : '';
+  const stepType = step.type || 'step';
+
+  // meta 标签（按步骤类型定制显示）
+  const metaBits = [];
+  if (step.meta) {
+    if (step.meta.event && !step.meta.chapter_num) metaBits.push({t:`事件${step.meta.event}`});
+    if (step.meta.chapter_num) metaBits.push({t:`第${step.meta.chapter_num}章`});
+    if (step.meta.word_count) metaBits.push({t:`${step.meta.word_count}字`});
+    if (step.meta.entries_loaded) metaBits.push({t:`${step.meta.entries_loaded}条目`});
+    // update_entries 专属
+    if (stepType === 'update_entries') {
+      if (step.meta.new_entries) metaBits.push({t:`+${step.meta.new_entries}新`, cls:'entry-new'});
+      if (step.meta.updated_entries) metaBits.push({t:`↑${step.meta.updated_entries}更`, cls:'entry-upd'});
+      if (step.meta.skipped) metaBits.push({t:`${step.meta.skipped}跳`});
+    }
+    // review 专属
+    if (stepType === 'review') {
+      if (typeof step.meta.passed === 'boolean') {
+        metaBits.push({t: step.meta.passed ? '✓ 通过' : '✗ 未过', cls: step.meta.passed ? 'review-pass' : 'review-fail'});
+      }
+      if (step.meta.review_count) metaBits.push({t:`第${step.meta.review_count}次`});
+    }
+    // load_entries 专属
+    if (stepType === 'load_entries') {
+      if (step.meta.event_plan_generated) metaBits.push({t:'事件纲已生成', cls:'entry-new'});
+      else if (step.meta.event_plan_ready) metaBits.push({t:'事件纲就绪'});
+    }
+  }
+  const metaHtml = metaBits.map(m => `<span class="wf-card-meta ${m.cls || ''}">${m.t}</span>`).join('');
+
+  // tag 类型样式映射
+  const tagCls = ['update_entries', 'review'].includes(stepType) ? `wf-card-tag ${stepType}` : 'wf-card-tag';
+
+  // 完整内容（detail 优先，fallback preview）
+  let content = step.detail || step.preview || '';
+  // update_entries 的 detail 是 JSON，格式化展示
+  if (stepType === 'update_entries' && content && content.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(content);
+      content = formatEntryUpdates(parsed);
+    } catch(e) { /* 解析失败保留原样 */ }
+  }
+  // running 步骤还没内容时显示骨架
+  const contentEmpty = !content;
+  const contentHtml = contentEmpty
+    ? '<div class="wf-card-content empty"></div>'
+    : `<div class="wf-card-content">${esc(content)}</div>`;
+  // 错误信息
+  const errHtml = step.error ? `<div class="wf-card-error">⚠ ${esc(step.error)}</div>` : '';
+  // 折叠按钮：completed 状态可折叠（默认展开）
+  const toggleHtml = (cls === 'completed' && !contentEmpty)
+    ? `<span class="wf-card-toggle" title="折叠/展开">折叠</span>` : '';
+  return `
+    <div class="wf-card ${cls}">
+      <div class="wf-card-head">
+        <span class="wf-card-num">${String(i+1).padStart(2,'0')}</span>
+        <span class="${tagCls}">${stepType}</span>
+        <span class="wf-card-title">${esc(step.title || '')}</span>
+        ${metaHtml}
+        ${dur ? `<span class="wf-card-time">${dur}</span>` : ''}
+        ${toggleHtml}
+      </div>
+      ${step.summary ? `<div class="wf-card-summary">${esc(step.summary)}</div>` : ''}
+      ${contentHtml}
+      ${errHtml}
+    </div>`;
+}
+
+// 格式化 update_entries 的 JSON 为可读文本
+function formatEntryUpdates(parsed) {
+  const lines = [];
+  const newE = parsed.new_entries_created || 0;
+  const updE = parsed.existing_entries_updated || 0;
+  const skipped = parsed.skipped || [];
+  lines.push(`【统计】新增 ${newE} 条 / 更新 ${updE} 条 / 跳过 ${skipped.length} 条`);
+  if (skipped.length > 0) {
+    lines.push('--- 跳过 ---');
+    skipped.forEach(s => lines.push(`• ${s.name || '(无名)'} — ${s.reason || ''}`));
+  }
+  return lines.join('\n');
+}
+
+async function wfOpenReader() {
+  // 找到最新已生成章节号
+  if (!engineState?.steps) return;
+  let chNum = 0;
+  for (const s of engineState.steps) {
+    if (s.status === 'completed' && s.meta?.chapter_num) chNum = s.meta.chapter_num;
+  }
+  if (!chNum) { toast('暂无已生成章节', 'err'); return; }
+  await openReader(chNum);
+}
+
+async function wfResumeFromModify() {
+  // 针对性重跑：读取 modal 里保存的意见和目标章节
+  const lastInstruction = (document.getElementById('wfModifyInput')?.value || '').trim();
+  if (!lastInstruction) {
+    toast('请先点「提意见/补充」填写修改要求', 'err');
+    wfModify();
+    return;
+  }
+  const targetCh = parseInt(document.getElementById('wfModifyTargetCh')?.value || '0') || 0;
+  try {
+    const resp = await fetch('/api/step/modify', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({instruction: lastInstruction, target_chapter: targetCh}),
+    });
+    const data = await resp.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    toast(`已基于意见针对性重跑${targetCh > 0 ? '（第'+targetCh+'章）' : ''}`, 'cyan');
+    setTimeout(pollEngine, 200);
+  } catch(e) { toast('重跑失败', 'err'); }
+}
+
+async function wfRestart() {
+  if (!currentProjectName) return;
+  if (!confirm('重新跑会从头开始生成。继续？')) return;
+  try {
+    await fetch('/api/step/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project: currentProjectName, auto_run:true}),
+    });
+    toast('已重新启动', 'cyan');
+    setTimeout(pollEngine, 200);
+  } catch(e) { toast('启动失败', 'err'); }
+}
+
+// ── Reader ──
+async function openReader(chNum) {
+  readerCh = {ch_num: chNum, field: 'refined_content', isEditing: false};
+  document.getElementById('view-reader').classList.add('active');
+  document.getElementById('readerTitle').textContent = `${currentProjectName} · 章节`;
+  renderReaderSidebar(chNum);
+  await loadChapter(chNum);
+}
+
+function renderReaderSidebar(activeChNum) {
+  const sidebar = document.getElementById('readerSidebar');
+  let sideHtml = '';
+  for (const evt of (currentProject?.events || [])) {
+    for (const ch of (evt.chapters || [])) {
+      const active = ch.num === activeChNum ? 'active' : '';
+      const stTxt = ch.status === 'human_confirmed' ? '🔒 已锁定' : ch.status === 'refined' ? '已润色' : ch.has_content ? '草稿' : '空';
+      sideHtml += `<div class="reader-chap-item ${active}" onclick="readerSwitchChap(${ch.num})"><div>第 ${ch.num} 章</div><div class="meta">${ch.word_count||0}字 · ${stTxt}</div></div>`;
+    }
+  }
+  sidebar.innerHTML = sideHtml;
+}
+
+async function reloadReaderSidebar() {
+  // 重新拉项目详情后，刷新侧栏（保留当前 active）
+  if (!currentProjectName) return;
+  await loadProjectDetail(currentProjectName);
+  if (readerCh) renderReaderSidebar(readerCh.ch_num);
+}
+
+async function loadChapter(chNum) {
+  try {
+    const res = await fetch(`/api/project/${currentProjectName}/chapter/${chNum}`);
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    readerFields = {
+      refined_content: data.refined_content || '',
+      content: data.content || '',
+      plan: data.plan || '',
+      review_feedback: data.review_feedback || '',
+    };
+    document.getElementById('readerChapTitle').textContent = `第 ${chNum} 章`;
+    const stTxt = data.status === 'human_confirmed' ? '🔒 已锁定' : data.status === 'refined' ? '已润色' : data.status || '空';
+    document.getElementById('readerChapMeta').textContent = `事件${data.event_num} · ${data.word_count||0}字 · 状态：${stTxt}`;
+    // 锁定状态时显示解锁按钮
+    document.getElementById('readerUnlockBtn').style.display = (data.status === 'human_confirmed') ? '' : 'none';
+    readerCh.status = data.status;
+    readerCh.field = 'refined_content';
+    document.querySelectorAll('.reader-field-tab').forEach(t => t.classList.toggle('active', t.dataset.field === 'refined_content'));
+    readerRenderContent();
+  } catch(e) { toast('加载失败', 'err'); }
+}
+
+function readerRenderContent() {
+  const area = document.getElementById('readerContentArea');
+  const actions = document.getElementById('readerActions');
+  const editBtn = document.getElementById('readerEditBtn');
+  if (readerCh.isEditing) {
+    area.innerHTML = `<textarea class="reader-edit" id="readerEditText">${esc(readerFields[readerCh.field] || '')}</textarea>`;
+    actions.style.display = 'flex';
+    editBtn.textContent = '取消编辑';
+    // 实时更新字数
+    const ta = document.getElementById('readerEditText');
+    const updateInfo = () => {
+      const text = ta.value || '';
+      const cn = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+      const info = document.getElementById('readerEditInfo');
+      if (info) info.innerHTML = `<b>${cn}</b> 字 · Ctrl+S 保存 · Ctrl+Enter 保存并锁定`;
+    };
+    ta.addEventListener('input', updateInfo);
+    updateInfo();
+    ta.focus();
+  } else {
+    const content = readerFields[readerCh.field];
+    area.innerHTML = `<div class="reader-content ${content ? '' : 'empty'}">${content ? esc(content) : '（无内容）'}</div>`;
+    actions.style.display = 'none';
+    editBtn.textContent = '✎ 编辑';
+  }
+}
+
+function readerSwitchField(field) {
+  if (readerCh.isEditing) {
+    // 保存当前编辑内容到内存
+    readerFields[readerCh.field] = document.getElementById('readerEditText')?.value || '';
+  }
+  readerCh.field = field;
+  document.querySelectorAll('.reader-field-tab').forEach(t => t.classList.toggle('active', t.dataset.field === field));
+  readerRenderContent();
+}
+
+async function readerSwitchChap(chNum) {
+  if (readerCh.isEditing) {
+    if (!confirm('当前有未保存的编辑，切换章节会丢失。继续？')) return;
+    readerCh.isEditing = false;
+  }
+  readerCh.ch_num = chNum;
+  document.querySelectorAll('.reader-chap-item').forEach(it => it.classList.remove('active'));
+  // 重新渲染侧栏 active
+  openReader(chNum);
+}
+
+function readerToggleEdit() {
+  if (readerCh.isEditing) {
+    readerCh.isEditing = false;
+  } else {
+    readerCh.isEditing = true;
+  }
+  readerRenderContent();
+}
+
+function readerCancelEdit() {
+  readerCh.isEditing = false;
+  readerRenderContent();
+}
+
+async function readerUnlock() {
+  if (!readerCh) return;
+  if (!confirm('解锁后此章节可被工作流重新生成，手改内容可能被覆盖。继续？')) return;
+  try {
+    const res = await fetch(`/api/project/${currentProjectName}/chapter/${readerCh.ch_num}/unlock`, {method:'POST'});
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    toast('已解锁', 'cyan');
+    await loadChapter(readerCh.ch_num);
+    await reloadReaderSidebar();
+  } catch(e) { toast('解锁失败', 'err'); }
+}
+
+async function readerSave(confirm) {
+  const newText = document.getElementById('readerEditText')?.value || '';
+  readerFields[readerCh.field] = newText;
+  try {
+    const res = await fetch(`/api/project/${currentProjectName}/chapter/${readerCh.ch_num}/edit`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({field: readerCh.field, text: newText, confirm: !!confirm}),
+    });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'err'); return; }
+    readerCh.isEditing = false;
+    readerRenderContent();
+    toast(confirm ? '已保存并锁定，工作流不会再覆盖' : '已保存', 'cyan');
+    // 刷新侧栏状态
+    await reloadReaderSidebar();
+  } catch(e) { toast('保存失败', 'err'); }
+}
+
+function closeReader() {
+  if (readerCh?.isEditing) {
+    if (!confirm('有未保存的编辑，关闭会丢失。继续？')) return;
+  }
+  document.getElementById('view-reader').classList.remove('active');
+  readerCh = null;
+}
+
+// ── Create Modal shortcuts ──
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.overlay.show').forEach(o => o.classList.remove('show'));
+  }
+  // 编辑器快捷键：Ctrl+S 保存，Ctrl+Enter 保存并锁定
+  if (readerCh?.isEditing && (e.ctrlKey || e.metaKey)) {
+    if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      readerSave(false);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      readerSave(true);
+    }
+  }
+});
+
+// ── Polling ──
+let pollTimer = null;
+function startPolling() {
+  if (polling) return;
+  polling = true;
+  schedulePoll(800);  // 首次 800ms
+}
+function schedulePoll(delay) {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(pollEngine, delay);
+}
+async function pollEngine() {
+  try {
+    const res = await fetch('/api/step/state');
+    const data = await res.json();
+    const changed = JSON.stringify(data) !== JSON.stringify(engineState);
+    const wasRunning = engineState?.status === 'running';
+    engineState = data;
+    // 如果工作流视图打开，更新
+    if (document.getElementById('view-workflow').classList.contains('active')) {
+      renderWorkflow();
+      // 同时刷新项目详情缓存（如果 reader 打开需要侧栏更新）
+      if (changed && currentProjectName === data.project && data.status !== 'running') {
+        // 状态变化时拉取项目详情（更新侧栏的章节状态）
+        try {
+          const detailRes = await fetch(`/api/project/${currentProjectName}`);
+          currentProject = await detailRes.json();
+          if (readerCh) renderReaderSidebar(readerCh.ch_num);
+        } catch(e) {}
+      }
+    }
+    // 如果项目详情打开，且状态变化，刷新
+    if (changed && document.getElementById('view-detail').classList.contains('active') && currentProjectName === data.project) {
+      // 只在状态变化大时刷新（避免每次轮询都刷）
+      if (wasRunning !== (data.status === 'running') || data.status === 'completed') {
+        loadProjectDetail(currentProjectName);
+      }
+    }
+    // 自适应间隔：running 时 800ms，其他状态 2500ms
+    const nextDelay = (data.status === 'running') ? 800 : 2500;
+    schedulePoll(nextDelay);
+  } catch(e) {
+    schedulePoll(2000);  // 出错时 2s 后重试
+  }
+}
+</script>
+</body>
+</html>

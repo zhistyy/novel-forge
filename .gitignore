@@ -1,0 +1,42 @@
+# 环境变量（含 API 密钥）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# 数据库文件
+*.db
+*.db-shm
+*.db-wal
+
+# 日志
+*.log
+debug.log
+
+# 项目运行时文件
+projects/*/api_logs.json
+projects/*/全集.md
+projects/*/冲突检查结果.json
+
+# 示例项目（仅推源码，不推生成的小说内容）
+projects/
+
+# 测试脚本和临时检查工具
+test_*.py
+check_*.py
+run_e2e_test.py
+cleanup_*.py
+e2e_*.log
+
+# TRAE 本地配置
+.trae/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
